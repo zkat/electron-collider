@@ -412,7 +412,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "collider-cmd-bisect"
+version = "0.1.0"
+dependencies = [
+ "collider-command",
+ "collider-common",
+]
+
+[[package]]
 name = "collider-cmd-pack"
+version = "0.1.0"
+dependencies = [
+ "collider-command",
+ "collider-common",
+]
+
+[[package]]
+name = "collider-cmd-start"
 version = "0.1.0"
 dependencies = [
  "collider-command",
@@ -728,7 +744,9 @@ checksum = "212d0f5754cb6769937f4501cc0e67f4f4483c8d2c3e1e922ee9edbe4ab4c7c0"
 name = "electron-collider"
 version = "0.1.0"
 dependencies = [
+ "collider-cmd-bisect",
  "collider-cmd-pack",
+ "collider-cmd-start",
  "collider-command",
  "collider-common",
  "directories",

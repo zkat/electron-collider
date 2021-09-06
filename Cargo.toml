@@ -12,7 +12,9 @@ members = [
 
 [dependencies]
 # Commands
+collider-cmd-bisect = { path = "./commands/collider-cmd-bisect" }
 collider-cmd-pack = { path = "./commands/collider-cmd-pack" }
+collider-cmd-start = { path = "./commands/collider-cmd-start" }
 
 # Workspace deps
 collider-command = { path = "./crates/collider-command" }

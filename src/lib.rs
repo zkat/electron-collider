@@ -1,17 +1,19 @@
 use std::env;
 use std::path::PathBuf;
 
-use directories::ProjectDirs;
 use collider_command::ColliderCommand;
 use collider_command::{
     async_trait::async_trait,
     clap::{self, ArgMatches, Clap, FromArgMatches, IntoApp},
-    log,
     collider_config::{ColliderConfig, ColliderConfigLayer, ColliderConfigOptions},
+    log,
 };
 use collider_common::miette::{Context, IntoDiagnostic, Result};
+use directories::ProjectDirs;
 
+use collider_cmd_bisect::BisectCmd;
 use collider_cmd_pack::PackCmd;
+use collider_cmd_start::StartCmd;
 
 #[derive(Debug, Clap)]
 #[clap(
@@ -109,30 +111,49 @@ impl Collider {
 #[derive(Debug, Clap)]
 pub enum ColliderCmd {
     #[clap(
+        about = "Bisect the Electron version that caused a breakage.",
+        setting = clap::AppSettings::ColoredHelp,
+        setting = clap::AppSettings::DisableHelpSubcommand,
+        setting = clap::AppSettings::DeriveDisplayOrder,
+    )]
+    Bisect(BisectCmd),
+    #[clap(
         about = "Pack an application for release",
         setting = clap::AppSettings::ColoredHelp,
         setting = clap::AppSettings::DisableHelpSubcommand,
         setting = clap::AppSettings::DeriveDisplayOrder,
     )]
     Pack(PackCmd),
+    #[clap(
+        about = "Start your Electron application.",
+        setting = clap::AppSettings::ColoredHelp,
+        setting = clap::AppSettings::DisableHelpSubcommand,
+        setting = clap::AppSettings::DeriveDisplayOrder,
+    )]
+    Start(StartCmd),
 }
 
 #[async_trait]
 impl ColliderCommand for Collider {
     async fn execute(self) -> Result<()> {
         log::info!("Running command: {:#?}", self.subcommand);
+        use ColliderCmd::*;
         match self.subcommand {
-            ColliderCmd::Pack(pack) => pack.execute().await,
+            Bisect(cmd) => cmd.execute().await,
+            Pack(cmd) => cmd.execute().await,
+            Start(cmd) => cmd.execute().await,
         }
     }
 }
 
 impl ColliderConfigLayer for Collider {
     fn layer_config(&mut self, args: &ArgMatches, conf: &ColliderConfig) -> Result<()> {
-        match self.subcommand {
-            ColliderCmd::Pack(ref mut pack) => {
-                pack.layer_config(args.subcommand_matches("pack").unwrap(), conf)
-            }
-        }
+        use ColliderCmd::*;
+        let (cmd, match_name): (&mut dyn ColliderConfigLayer, &str) = match self.subcommand {
+            Bisect(ref mut cmd) => (cmd, "bisect"),
+            Pack(ref mut cmd) => (cmd, "pack"),
+            Start(ref mut cmd) => (cmd, "start"),
+        };
+        cmd.layer_config(args.subcommand_matches(match_name).unwrap(), conf)
     }
 }
