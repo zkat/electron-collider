@@ -11,10 +11,6 @@ use collider_command::{
 use collider_common::miette::{Context, IntoDiagnostic, Result};
 use directories::ProjectDirs;
 
-use collider_cmd_bisect::BisectCmd;
-use collider_cmd_pack::PackCmd;
-use collider_cmd_start::StartCmd;
-
 #[derive(Debug, Clap)]
 #[clap(
     author = "Kat Marchán <kzm@zkat.tech>",
@@ -116,21 +112,28 @@ pub enum ColliderCmd {
         setting = clap::AppSettings::DisableHelpSubcommand,
         setting = clap::AppSettings::DeriveDisplayOrder,
     )]
-    Bisect(BisectCmd),
+    Bisect(collider_cmd_bisect::BisectCmd),
+    #[clap(
+        about = "Scaffold a new Electron application based on a workload.",
+        setting = clap::AppSettings::ColoredHelp,
+        setting = clap::AppSettings::DisableHelpSubcommand,
+        setting = clap::AppSettings::DeriveDisplayOrder,
+    )]
+    New(collider_cmd_new::NewCmd),
     #[clap(
         about = "Pack an application for release",
         setting = clap::AppSettings::ColoredHelp,
         setting = clap::AppSettings::DisableHelpSubcommand,
         setting = clap::AppSettings::DeriveDisplayOrder,
     )]
-    Pack(PackCmd),
+    Pack(collider_cmd_pack::PackCmd),
     #[clap(
         about = "Start your Electron application.",
         setting = clap::AppSettings::ColoredHelp,
         setting = clap::AppSettings::DisableHelpSubcommand,
         setting = clap::AppSettings::DeriveDisplayOrder,
     )]
-    Start(StartCmd),
+    Start(collider_cmd_start::StartCmd),
 }
 
 #[async_trait]
@@ -140,6 +143,7 @@ impl ColliderCommand for Collider {
         use ColliderCmd::*;
         match self.subcommand {
             Bisect(cmd) => cmd.execute().await,
+            New(cmd) => cmd.execute().await,
             Pack(cmd) => cmd.execute().await,
             Start(cmd) => cmd.execute().await,
         }
@@ -151,6 +155,7 @@ impl ColliderConfigLayer for Collider {
         use ColliderCmd::*;
         let (cmd, match_name): (&mut dyn ColliderConfigLayer, &str) = match self.subcommand {
             Bisect(ref mut cmd) => (cmd, "bisect"),
+            New(ref mut cmd) => (cmd, "new"),
             Pack(ref mut cmd) => (cmd, "pack"),
             Start(ref mut cmd) => (cmd, "start"),
         };

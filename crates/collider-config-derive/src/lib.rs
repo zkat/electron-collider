@@ -115,6 +115,8 @@ impl ToTokens for ColliderConfigLayer {
 
                 use std::str::FromStr;
 
+                use collider_config::ColliderConfigError;
+
                 impl collider_config::ColliderConfigLayer for #ident {
                     fn layer_config(&mut self, args: &clap::ArgMatches, config: &collider_config::ColliderConfig) -> collider_common::miette::Result<()> {
                         #(#field_defs)*

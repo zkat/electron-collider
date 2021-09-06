@@ -420,6 +420,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "collider-cmd-new"
+version = "0.1.0"
+dependencies = [
+ "collider-command",
+ "collider-common",
+]
+
+[[package]]
 name = "collider-cmd-pack"
 version = "0.1.0"
 dependencies = [
@@ -745,6 +753,7 @@ name = "electron-collider"
 version = "0.1.0"
 dependencies = [
  "collider-cmd-bisect",
+ "collider-cmd-new",
  "collider-cmd-pack",
  "collider-cmd-start",
  "collider-command",
