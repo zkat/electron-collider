@@ -1,0 +1,15 @@
+[package]
+name = "collider-command"
+version = "0.1.0"
+authors = ["Kat Marchán <kzm@zkat.tech>"]
+edition = "2018"
+
+[dependencies]
+collider-common = { path = "../collider-common" }
+
+# Re-exports, a la "collider-common", but stuff that commands use a lot.
+async-trait = "0.1.19"
+clap = { git = "https://github.com/zkat/clap" }
+log = "0.4.11"
+collider-config = { path = "../../crates/collider-config" }
+owo-colors = "2.0.0"
