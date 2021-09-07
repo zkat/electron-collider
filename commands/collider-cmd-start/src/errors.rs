@@ -60,6 +60,10 @@ pub enum StartError {
     #[error(transparent)]
     #[diagnostic(code(collider::start::semver_error))]
     SemverError(#[from] collider_node_semver::SemverError),
+
+    #[error("Electron process exited with an error")]
+    #[diagnostic(code(collider::start::electron_error))]
+    ElectronFailed,
 }
 
 impl From<octocrab::Error> for StartError {
