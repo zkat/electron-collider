@@ -1,10 +1,17 @@
+use std::path::Path;
+
 use collider_command::{
     async_trait::async_trait,
     clap::{self, Clap},
     collider_config::{self, ColliderConfigLayer},
     log, ColliderCommand,
 };
-use collider_common::miette::{bail, IntoDiagnostic, Result};
+use collider_common::{
+    directories::ProjectDirs,
+    miette::{bail, IntoDiagnostic, Result},
+    smol::{self, fs, io::AsyncWriteExt},
+    surf::Url,
+};
 use collider_node_semver::{Range, Version};
 
 use async_compat::CompatExt;
@@ -15,20 +22,28 @@ mod errors;
 
 #[derive(Debug, Clap, ColliderConfigLayer)]
 pub struct StartCmd {
+    #[clap(long, short, about = "Force download of the Electron binary.")]
+    force: bool,
+
     #[clap(long, short, about = "Electron version to use.", default_value = "*")]
     electron_version: Range,
+
     #[clap(long, short, about = "GitHub API Token (no permissions needed)")]
     github_token: Option<String>,
+
     #[clap(
         long,
         short,
         about = "Include prerelease versions when trying to find a version match."
     )]
     include_prerelease: bool,
+
     #[clap(from_global)]
     loglevel: log::LevelFilter,
+
     #[clap(from_global)]
     quiet: bool,
+
     #[clap(from_global)]
     json: bool,
 }
@@ -36,18 +51,27 @@ pub struct StartCmd {
 #[async_trait]
 impl ColliderCommand for StartCmd {
     async fn execute(self) -> Result<()> {
-        let version = self.get_electron_version(&self.electron_version).await?;
-        println!("Starting your application using electron@{}", version);
-        println!("...");
+        let (version, release) = self.get_electron_release(&self.electron_version).await?;
+        log::info!("Selected electron@{}", version);
+        let triple = self.get_target_triple(&release)?;
+        let zip = self.pick_electron_zip(&version, &release, &triple)?;
+        let dirs = ProjectDirs::from("", "", "collider").ok_or(StartError::NoProjectDir)?;
+        let dest = dirs.data_local_dir().join(&triple).to_owned();
+        self.ensure_electron(&dirs, &dest, &zip, &triple).await?;
+        let exe = dest.join(self.get_exe_name());
+        log::info!("Launching executable at {}", exe.display());
         println!(
-            "Application started. Debug information will be printed here. Press Ctrl+C to exit."
+            "Starting application. Debug information will be printed here. Press Ctrl+C to exit."
         );
         Ok(())
     }
 }
 
 impl StartCmd {
-    async fn get_electron_version(&self, range: &Range) -> Result<Version> {
+    async fn get_electron_release(
+        &self,
+        range: &Range,
+    ) -> Result<(Version, octocrab::models::repos::Release)> {
         let mut crab = octocrab::OctocrabBuilder::new();
         if let Some(token) = &self.github_token {
             crab = crab.personal_token(token.clone());
@@ -62,7 +86,7 @@ impl StartCmd {
                 .send()
                 .compat()
                 .await
-                .map_err(map_octocrab_error)?
+                .map_err(StartError::from_octocrab)?
                 .items;
             if tags.is_empty() {
                 break;
@@ -78,9 +102,9 @@ impl StartCmd {
                         .get_by_tag(&tag.name)
                         .compat()
                         .await
-                        .map_err(map_octocrab_error)
+                        .map_err(StartError::from_octocrab)
                     {
-                        Ok(_) => return Ok(version),
+                        Ok(release) => return Ok((version, release)),
                         Err(err @ StartError::GitHubApiLimit(_)) => bail!(err),
                         Err(_) => {}
                     }
@@ -89,15 +113,105 @@ impl StartCmd {
         }
         bail!("No Electron version found in range {}", range);
     }
-}
 
-fn map_octocrab_error(err: octocrab::Error) -> StartError {
-    match err {
-        octocrab::Error::GitHub {
-            source: ref gh_err, ..
-        } if gh_err.message.contains("rate limit exceeded") => {
-            StartError::GitHubApiLimit(gh_err.clone())
+    fn get_target_triple(&self, release: &octocrab::models::repos::Release) -> Result<String> {
+        let platform = match std::env::consts::OS {
+            "windows" => "win32",
+            "macos" => "darwin",
+            "linux" => "linux",
+            // TODO: wtf is "mas"?
+            _ => bail!(StartError::UnsupportedPlatform(std::env::consts::OS.into())),
+        };
+        let arch = match std::env::consts::ARCH {
+            "x86" => "ia32",
+            "x86_64" => "x64",
+            "aarch64" => "arm64",
+            _ => bail!(StartError::UnsupportedArch(std::env::consts::ARCH.into())),
+        };
+        Ok(format!("{}-{}-{}", release.tag_name, platform, arch))
+    }
+
+    fn pick_electron_zip(
+        &self,
+        version: &Version,
+        release: &octocrab::models::repos::Release,
+        triple: &str,
+    ) -> Result<Url> {
+        let name = format!("electron-{}.zip", triple);
+        Ok(release
+            .assets
+            .iter()
+            .find(|a| a.name == name)
+            .map(|a| a.browser_download_url.clone())
+            .ok_or_else(|| StartError::MissingElectronFiles {
+                version: version.clone(),
+                target: name,
+            })?)
+    }
+
+    async fn ensure_electron(
+        &self,
+        dirs: &ProjectDirs,
+        dest: &Path,
+        zip: &Url,
+        triple: &str,
+    ) -> Result<()> {
+        if self.force || fs::metadata(&dest).await.is_err() {
+            let parent = dest.parent().expect("BUG: cache dir should have a parent");
+            fs::create_dir_all(parent)
+                .await
+                .map_err(StartError::IoError)?;
+            let cache = dirs.cache_dir();
+            fs::create_dir_all(cache)
+                .await
+                .map_err(StartError::IoError)?;
+            log::info!("Fetching zip file from {}", zip);
+            let mut res = reqwest::get(zip.to_string())
+                .compat()
+                .await
+                .map_err(StartError::HttpError)?;
+            let zip_dest = cache.join(format!("electron-{}.zip", triple));
+            log::info!("Writing zip file to {}", zip_dest.display());
+            let mut file = fs::File::create(&zip_dest)
+                .await
+                .map_err(StartError::IoError)?;
+            // TODO: For some reason, this keeps failing like half the time
+            // due to a broken zip file? I don't it at all. I think the best
+            // thing to do is just to retry `ensure_electron` several times
+            // unless it just keeps failing? See https://crates.io/crates/backoff
+            while let Some(chunk) = res.chunk().compat().await.map_err(StartError::HttpError)? {
+                file.write_all(&chunk[..])
+                    .await
+                    .map_err(StartError::IoError)?;
+            }
+            std::mem::drop(file);
+            log::info!("Zip file written.");
+            let dest = dest.to_owned();
+            log::info!("Extracting zip file to {}", dest.display());
+            let zip_dest_clone = zip_dest.clone();
+            smol::unblock(move || -> Result<()> {
+                let mut archive = zip::ZipArchive::new(
+                    std::fs::File::open(&zip_dest).map_err(StartError::IoError)?,
+                )
+                .map_err(StartError::ZipError)?;
+                archive.extract(&dest).map_err(StartError::ZipError)?;
+                Ok(())
+            })
+            .await?;
+            log::info!("Deleting zip file. We don't need it anymore.");
+            fs::remove_file(&zip_dest_clone)
+                .await
+                .map_err(StartError::IoError)?;
         }
-        _ => StartError::GitHubApiError(err),
+        Ok(())
+    }
+
+    fn get_exe_name(&self) -> String {
+        match std::env::consts::OS {
+            "windows" => "electron.exe".into(),
+            "macos" => "Electron.app/Contents/MacOS/Electron".into(),
+            "linux" => "electron".into(),
+            _ => "electron".into(),
+        }
     }
 }

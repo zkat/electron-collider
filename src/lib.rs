@@ -8,8 +8,10 @@ use collider_command::{
     collider_config::{ColliderConfig, ColliderConfigLayer, ColliderConfigOptions},
     log,
 };
-use collider_common::miette::{Context, IntoDiagnostic, Result};
-use directories::ProjectDirs;
+use collider_common::{
+    directories::ProjectDirs,
+    miette::{Context, IntoDiagnostic, Result},
+};
 
 #[derive(Debug, Clap)]
 #[clap(

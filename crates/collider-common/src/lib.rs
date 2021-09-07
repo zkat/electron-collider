@@ -1,5 +1,6 @@
 pub use chrono;
 pub use chrono_humanize;
+pub use directories;
 pub use miette;
 pub use serde;
 pub use serde_json;

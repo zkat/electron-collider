@@ -13,3 +13,5 @@ collider-node-semver = { path = "../../crates/collider-node-semver" }
 octocrab = "0.12.0"
 # ...and we need this for smol compat.
 async-compat = "0.2.1"
+zip = "0.5.13"
+reqwest = "0.11.4"

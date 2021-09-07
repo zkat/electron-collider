@@ -23,7 +23,6 @@ collider-common = { path = "./crates/collider-common" }
 
 # Regular deps
 fern = "0.6.0"
-directories = "3.0.1"
 
 [build-dependencies]
 embed-resource = "1.3.3"
