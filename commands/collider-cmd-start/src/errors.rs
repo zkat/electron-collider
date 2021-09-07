@@ -19,7 +19,7 @@ pub enum StartError {
 
     #[error(transparent)]
     #[diagnostic(code(collider::start::github_api))]
-    GitHubApiError(#[from] octocrab::Error),
+    GitHubApiError(octocrab::Error),
 
     #[error("{0}")]
     #[diagnostic(
@@ -62,8 +62,8 @@ pub enum StartError {
     SemverError(#[from] collider_node_semver::SemverError),
 }
 
-impl StartError {
-    pub(crate) fn from_octocrab(err: octocrab::Error) -> Self {
+impl From<octocrab::Error> for StartError {
+    fn from(err: octocrab::Error) -> Self {
         match err {
             octocrab::Error::GitHub {
                 source: ref gh_err, ..

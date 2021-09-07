@@ -76,7 +76,7 @@ impl StartCmd {
         if let Some(token) = &self.github_token {
             crab = crab.personal_token(token.clone());
         }
-        let crab = crab.build().map_err(StartError::from_octocrab)?;
+        let crab = crab.build()?;
         for page in 0u32.. {
             let tags = crab
                 .repos("electron", "electron")
@@ -85,8 +85,7 @@ impl StartCmd {
                 .page(page)
                 .send()
                 .compat()
-                .await
-                .map_err(StartError::from_octocrab)?
+                .await?
                 .items;
             if tags.is_empty() {
                 break;
@@ -102,7 +101,7 @@ impl StartCmd {
                         .get_by_tag(&tag.name)
                         .compat()
                         .await
-                        .map_err(StartError::from_octocrab)
+                        .map_err(StartError::from)
                     {
                         Ok(release) => return Ok((version, release)),
                         Err(err @ StartError::GitHubApiLimit(_)) => return Err(err),
@@ -174,8 +173,7 @@ impl StartCmd {
             // thing to do is just to retry `ensure_electron` several times
             // unless it just keeps failing? See https://crates.io/crates/backoff
             while let Some(chunk) = res.chunk().compat().await? {
-                file.write_all(&chunk[..])
-                    .await?;
+                file.write_all(&chunk[..]).await?;
             }
             std::mem::drop(file);
             log::info!("Zip file written.");
