@@ -151,6 +151,10 @@ pub struct Version {
 }
 
 impl Version {
+    pub fn is_prerelease(&self) -> bool {
+        !self.pre_release.is_empty()
+    }
+
     pub fn parse<S: AsRef<str>>(input: S) -> Result<Version, SemverError> {
         let input = input.as_ref();
 
