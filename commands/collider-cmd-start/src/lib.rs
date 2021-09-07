@@ -5,11 +5,12 @@ use collider_command::{
     log, ColliderCommand,
 };
 use collider_common::miette::Result;
+use collider_node_semver::Range;
 
 #[derive(Debug, Clap, ColliderConfigLayer)]
 pub struct StartCmd {
     #[clap(long, short, about = "Electron version to use.")]
-    electron_version: Option<String>,
+    electron_version: Option<Range>,
     #[clap(from_global)]
     loglevel: log::LevelFilter,
     #[clap(from_global)]
