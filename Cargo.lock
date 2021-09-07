@@ -542,7 +542,7 @@ dependencies = [
  "async-compat",
  "collider-command",
  "collider-common",
- "collider-node-semver",
+ "node-semver",
  "octocrab",
  "reqwest",
  "zip",
@@ -598,19 +598,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "collider-node-semver"
-version = "0.1.0"
-dependencies = [
- "bytecount",
- "collider-common",
- "nom 6.1.2",
- "pretty_assertions",
- "serde 1.0.130",
- "serde_derive",
- "serde_json",
 ]
 
 [[package]]
@@ -1651,6 +1638,19 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "tempfile",
+]
+
+[[package]]
+name = "node-semver"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b533f1b1f88d17422acc6b595279bc033aca5c81e53a26f4f1f60a237674ce12"
+dependencies = [
+ "bytecount",
+ "miette",
+ "nom 6.1.2",
+ "serde 1.0.130",
+ "thiserror",
 ]
 
 [[package]]

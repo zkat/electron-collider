@@ -31,13 +31,13 @@ pub enum StartError {
     #[error("Could not find matching Electron files for release: {target}.")]
     #[diagnostic(code(collider::start::missing_electron_files))]
     MissingElectronFiles {
-        version: collider_node_semver::Version,
+        version: node_semver::Version,
         target: String,
     },
 
     #[error("A matching electron version could not be found for `electron@{0}`")]
     #[diagnostic(code(collider::start::matching_version_not_found))]
-    MatchingVersionNotFound(collider_node_semver::Range),
+    MatchingVersionNotFound(node_semver::Range),
 
     #[error("Unsupported architecture: {0}.")]
     #[diagnostic(
@@ -59,7 +59,7 @@ pub enum StartError {
 
     #[error(transparent)]
     #[diagnostic(code(collider::start::semver_error))]
-    SemverError(#[from] collider_node_semver::SemverError),
+    SemverError(#[from] node_semver::SemverError),
 
     #[error("Electron process exited with an error")]
     #[diagnostic(code(collider::start::electron_error))]

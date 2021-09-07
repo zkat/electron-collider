@@ -12,7 +12,7 @@ use collider_common::{
     smol::{self, fs, io::AsyncWriteExt, process::Command},
     surf::Url,
 };
-use collider_node_semver::{Range, Version};
+use node_semver::{Range, Version};
 
 use async_compat::CompatExt;
 

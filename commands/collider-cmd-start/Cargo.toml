@@ -7,7 +7,6 @@ edition = "2018"
 [dependencies]
 collider-command = { path = "../../crates/collider-command" }
 collider-common = { path = "../../crates/collider-common" }
-collider-node-semver = { path = "../../crates/collider-node-semver" }
 
 # TODO: Just hand-write the requests eventually. This is _meant_ to be temporary, because it pulls in tokio.
 octocrab = "0.12.0"
@@ -15,3 +14,4 @@ octocrab = "0.12.0"
 async-compat = "0.2.1"
 zip = "0.5.13"
 reqwest = "0.11.4"
+node-semver = "0.2.0"
