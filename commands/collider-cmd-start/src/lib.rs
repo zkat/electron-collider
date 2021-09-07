@@ -8,7 +8,7 @@ use collider_command::{
 };
 use collider_common::{
     directories::ProjectDirs,
-    miette::{bail, IntoDiagnostic, Result},
+    miette::Result,
     smol::{self, fs, io::AsyncWriteExt},
     surf::Url,
 };
@@ -71,12 +71,12 @@ impl StartCmd {
     async fn get_electron_release(
         &self,
         range: &Range,
-    ) -> Result<(Version, octocrab::models::repos::Release)> {
+    ) -> Result<(Version, octocrab::models::repos::Release), StartError> {
         let mut crab = octocrab::OctocrabBuilder::new();
         if let Some(token) = &self.github_token {
             crab = crab.personal_token(token.clone());
         }
-        let crab = crab.build().into_diagnostic()?;
+        let crab = crab.build().map_err(StartError::from_octocrab)?;
         for page in 0u32.. {
             let tags = crab
                 .repos("electron", "electron")
@@ -105,28 +105,31 @@ impl StartCmd {
                         .map_err(StartError::from_octocrab)
                     {
                         Ok(release) => return Ok((version, release)),
-                        Err(err @ StartError::GitHubApiLimit(_)) => bail!(err),
+                        Err(err @ StartError::GitHubApiLimit(_)) => return Err(err),
                         Err(_) => {}
                     }
                 }
             }
         }
-        bail!("No Electron version found in range {}", range);
+        Err(StartError::MatchingVersionNotFound(range.clone()))
     }
 
-    fn get_target_triple(&self, release: &octocrab::models::repos::Release) -> Result<String> {
+    fn get_target_triple(
+        &self,
+        release: &octocrab::models::repos::Release,
+    ) -> Result<String, StartError> {
         let platform = match std::env::consts::OS {
             "windows" => "win32",
             "macos" => "darwin",
             "linux" => "linux",
             // TODO: wtf is "mas"?
-            _ => bail!(StartError::UnsupportedPlatform(std::env::consts::OS.into())),
+            _ => return Err(StartError::UnsupportedPlatform(std::env::consts::OS.into())),
         };
         let arch = match std::env::consts::ARCH {
             "x86" => "ia32",
             "x86_64" => "x64",
             "aarch64" => "arm64",
-            _ => bail!(StartError::UnsupportedArch(std::env::consts::ARCH.into())),
+            _ => return Err(StartError::UnsupportedArch(std::env::consts::ARCH.into())),
         };
         Ok(format!("{}-{}-{}", release.tag_name, platform, arch))
     }
@@ -155,53 +158,38 @@ impl StartCmd {
         dest: &Path,
         zip: &Url,
         triple: &str,
-    ) -> Result<()> {
+    ) -> Result<(), StartError> {
         if self.force || fs::metadata(&dest).await.is_err() {
             let parent = dest.parent().expect("BUG: cache dir should have a parent");
-            fs::create_dir_all(parent)
-                .await
-                .map_err(StartError::IoError)?;
+            fs::create_dir_all(parent).await?;
             let cache = dirs.cache_dir();
-            fs::create_dir_all(cache)
-                .await
-                .map_err(StartError::IoError)?;
+            fs::create_dir_all(cache).await?;
             log::info!("Fetching zip file from {}", zip);
-            let mut res = reqwest::get(zip.to_string())
-                .compat()
-                .await
-                .map_err(StartError::HttpError)?;
+            let mut res = reqwest::get(zip.to_string()).compat().await?;
             let zip_dest = cache.join(format!("electron-{}.zip", triple));
             log::info!("Writing zip file to {}", zip_dest.display());
-            let mut file = fs::File::create(&zip_dest)
-                .await
-                .map_err(StartError::IoError)?;
+            let mut file = fs::File::create(&zip_dest).await?;
             // TODO: For some reason, this keeps failing like half the time
             // due to a broken zip file? I don't it at all. I think the best
             // thing to do is just to retry `ensure_electron` several times
             // unless it just keeps failing? See https://crates.io/crates/backoff
-            while let Some(chunk) = res.chunk().compat().await.map_err(StartError::HttpError)? {
+            while let Some(chunk) = res.chunk().compat().await? {
                 file.write_all(&chunk[..])
-                    .await
-                    .map_err(StartError::IoError)?;
+                    .await?;
             }
             std::mem::drop(file);
             log::info!("Zip file written.");
             let dest = dest.to_owned();
             log::info!("Extracting zip file to {}", dest.display());
             let zip_dest_clone = zip_dest.clone();
-            smol::unblock(move || -> Result<()> {
-                let mut archive = zip::ZipArchive::new(
-                    std::fs::File::open(&zip_dest).map_err(StartError::IoError)?,
-                )
-                .map_err(StartError::ZipError)?;
-                archive.extract(&dest).map_err(StartError::ZipError)?;
+            smol::unblock(move || -> Result<(), StartError> {
+                let mut archive = zip::ZipArchive::new(std::fs::File::open(&zip_dest)?)?;
+                archive.extract(&dest)?;
                 Ok(())
             })
             .await?;
             log::info!("Deleting zip file. We don't need it anymore.");
-            fs::remove_file(&zip_dest_clone)
-                .await
-                .map_err(StartError::IoError)?;
+            fs::remove_file(&zip_dest_clone).await?;
         }
         Ok(())
     }

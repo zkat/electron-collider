@@ -7,7 +7,7 @@ use collider_common::{
 pub enum StartError {
     #[error("{0}")]
     #[diagnostic(code(collider::start::http_error))]
-    HttpError(reqwest::Error),
+    HttpError(#[from] reqwest::Error),
 
     #[error(transparent)]
     #[diagnostic(code(collider::start::io_error))]
@@ -35,6 +35,10 @@ pub enum StartError {
         target: String,
     },
 
+    #[error("A matching electron version could not be found for `electron@{0}`")]
+    #[diagnostic(code(collider::start::matching_version_not_found))]
+    MatchingVersionNotFound(collider_node_semver::Range),
+
     #[error("Unsupported architecture: {0}.")]
     #[diagnostic(
         code(collider::start::unsupported_arch),
@@ -52,6 +56,10 @@ pub enum StartError {
     #[error("Platform-specific project directory could not be determined.")]
     #[diagnostic(code(collider::start::no_project_dir))]
     NoProjectDir,
+
+    #[error(transparent)]
+    #[diagnostic(code(collider::start::semver_error))]
+    SemverError(#[from] collider_node_semver::SemverError),
 }
 
 impl StartError {
