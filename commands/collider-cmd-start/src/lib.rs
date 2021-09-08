@@ -189,15 +189,14 @@ impl StartCmd {
             let zip_dest = cache.join(format!("electron-{}.zip", triple));
             tracing::info!("Writing zip file to {}", zip_dest.display());
             let mut file = fs::File::create(&zip_dest).await?;
-            // TODO: For some reason, this keeps failing like half the time
-            // due to a broken zip file? I don't it at all. I think the best
-            // thing to do is just to retry `ensure_electron` several times
-            // unless it just keeps failing? See https://crates.io/crates/backoff
+            let mut written = 0;
             while let Some(chunk) = res.chunk().compat().await? {
-                file.write_all(&chunk[..]).await?;
+                file.write_all(chunk.as_ref()).await?;
+                written += chunk.len();
             }
+            file.flush().await?;
             std::mem::drop(file);
-            tracing::info!("Zip file written.");
+            tracing::info!("Wrote {} bytes to zip file", written,);
             let dest = dest.to_owned();
             tracing::info!("Extracting zip file to {}", dest.display());
             let zip_dest_clone = zip_dest.clone();
