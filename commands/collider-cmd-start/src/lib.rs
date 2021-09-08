@@ -32,7 +32,7 @@ pub struct StartCmd {
     force: bool,
 
     #[clap(long, short, about = "Electron version to use.", default_value = "*")]
-    using: Range,
+    using: String,
 
     #[clap(long, short, about = "GitHub API Token (no permissions needed)")]
     github_token: Option<String>,
@@ -69,7 +69,9 @@ pub struct StartCmd {
 #[async_trait]
 impl ColliderCommand for StartCmd {
     async fn execute(self) -> Result<()> {
-        let (version, release) = self.get_electron_release(&self.using).await?;
+        let (version, release) = self
+            .get_electron_release(&self.using.parse().map_err(StartError::SemverError)?)
+            .await?;
         log::info!("Selected electron@{}", version);
         let triple = self.get_target_triple(&release)?;
         let zip = self.pick_electron_zip(&version, &release, &triple)?;

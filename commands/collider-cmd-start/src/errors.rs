@@ -58,7 +58,7 @@ pub enum StartError {
     NoProjectDir,
 
     #[error(transparent)]
-    #[diagnostic(code(collider::start::semver_error))]
+    #[diagnostic(transparent)]
     SemverError(#[from] node_semver::SemverError),
 
     #[error("Electron process exited with an error")]
