@@ -77,8 +77,7 @@ impl ColliderCommand for StartCmd {
         let zip = self.pick_electron_zip(&version, &release, &triple)?;
         let dirs = ProjectDirs::from("", "", "collider").ok_or(StartError::NoProjectDir)?;
         let dest = dirs.data_local_dir().join(&triple).to_owned();
-        self.ensure_electron(&dirs, &dest, &zip, &triple).await?;
-        let exe = dest.join(self.get_exe_name());
+        let exe = self.ensure_electron(&dirs, &dest, &zip, &triple).await?;
         tracing::info!("Launching executable at {}", exe.display());
         println!(
             "Starting application. Debug information will be printed here. Press Ctrl+C to exit."
@@ -178,7 +177,7 @@ impl StartCmd {
         dest: &Path,
         zip: &Url,
         triple: &str,
-    ) -> Result<(), StartError> {
+    ) -> Result<PathBuf, StartError> {
         if self.force || fs::metadata(&dest).await.is_err() {
             let parent = dest.parent().expect("BUG: cache dir should have a parent");
             fs::create_dir_all(parent).await?;
@@ -209,7 +208,7 @@ impl StartCmd {
             tracing::info!("Deleting zip file. We don't need it anymore.");
             fs::remove_file(&zip_dest_clone).await?;
         }
-        Ok(())
+        Ok(dest.join(self.get_exe_name()))
     }
 
     fn get_exe_name(&self) -> String {
