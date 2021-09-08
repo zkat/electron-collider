@@ -5,7 +5,7 @@ use collider_common::{
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum StartError {
-    #[error("{0}")]
+    #[error(transparent)]
     #[diagnostic(code(collider::start::http_error))]
     HttpError(#[from] reqwest::Error),
 
