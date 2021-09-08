@@ -57,9 +57,6 @@ pub struct StartCmd {
     trace_warnings: bool,
 
     #[clap(from_global)]
-    verbosity: tracing::Level,
-
-    #[clap(from_global)]
     quiet: bool,
 
     #[clap(from_global)]
@@ -78,10 +75,12 @@ impl ColliderCommand for StartCmd {
         let dirs = ProjectDirs::from("", "", "collider").ok_or(StartError::NoProjectDir)?;
         let dest = dirs.data_local_dir().join(&triple).to_owned();
         let exe = self.ensure_electron(&dirs, &dest, &zip, &triple).await?;
-        tracing::info!("Launching executable at {}", exe.display());
-        println!(
-            "Starting application. Debug information will be printed here. Press Ctrl+C to exit."
-        );
+        tracing::debug!("Launching executable at {}", exe.display());
+        if !self.quiet && !self.json {
+            println!(
+                "Starting application. Debug information will be printed here. Press Ctrl+C to exit."
+            );
+        }
         self.exec_electron(&exe).await?;
         Ok(())
     }
@@ -183,10 +182,10 @@ impl StartCmd {
             fs::create_dir_all(parent).await?;
             let cache = dirs.cache_dir();
             fs::create_dir_all(cache).await?;
-            tracing::info!("Fetching zip file from {}", zip);
+            tracing::debug!("Fetching zip file from {}", zip);
             let mut res = reqwest::get(zip.to_string()).compat().await?;
             let zip_dest = cache.join(format!("electron-{}.zip", triple));
-            tracing::info!("Writing zip file to {}", zip_dest.display());
+            tracing::debug!("Writing zip file to {}", zip_dest.display());
             let mut file = fs::File::create(&zip_dest).await?;
             let mut written = 0;
             while let Some(chunk) = res.chunk().compat().await? {
@@ -195,9 +194,9 @@ impl StartCmd {
             }
             file.flush().await?;
             std::mem::drop(file);
-            tracing::info!("Wrote {} bytes to zip file", written,);
+            tracing::debug!("Wrote {} bytes to zip file", written,);
             let dest = dest.to_owned();
-            tracing::info!("Extracting zip file to {}", dest.display());
+            tracing::debug!("Extracting zip file to {}", dest.display());
             let zip_dest_clone = zip_dest.clone();
             smol::unblock(move || -> Result<(), StartError> {
                 let mut archive = zip::ZipArchive::new(std::fs::File::open(&zip_dest)?)?;
@@ -205,7 +204,7 @@ impl StartCmd {
                 Ok(())
             })
             .await?;
-            tracing::info!("Deleting zip file. We don't need it anymore.");
+            tracing::debug!("Deleting zip file. We don't need it anymore.");
             fs::remove_file(&zip_dest_clone).await?;
         }
         Ok(dest.join(self.get_exe_name()))
