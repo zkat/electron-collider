@@ -2,14 +2,14 @@ use collider_command::{
     async_trait::async_trait,
     clap::{self, Clap},
     collider_config::{self, ColliderConfigLayer},
-    log, ColliderCommand,
+    tracing, ColliderCommand,
 };
 use collider_common::miette::Result;
 
 #[derive(Debug, Clap, ColliderConfigLayer)]
 pub struct BisectCmd {
     #[clap(from_global)]
-    loglevel: log::LevelFilter,
+    verbosity: tracing::Level,
     #[clap(from_global)]
     quiet: bool,
     #[clap(from_global)]

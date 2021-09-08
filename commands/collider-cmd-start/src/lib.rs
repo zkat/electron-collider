@@ -4,7 +4,7 @@ use collider_command::{
     async_trait::async_trait,
     clap::{self, Clap},
     collider_config::{self, ColliderConfigLayer},
-    log, ColliderCommand,
+    tracing, ColliderCommand,
 };
 use collider_common::{
     directories::ProjectDirs,
@@ -57,7 +57,7 @@ pub struct StartCmd {
     trace_warnings: bool,
 
     #[clap(from_global)]
-    loglevel: log::LevelFilter,
+    verbosity: tracing::Level,
 
     #[clap(from_global)]
     quiet: bool,
@@ -72,14 +72,14 @@ impl ColliderCommand for StartCmd {
         let (version, release) = self
             .get_electron_release(&self.using.parse().map_err(StartError::SemverError)?)
             .await?;
-        log::info!("Selected electron@{}", version);
+        tracing::info!("Selected electron@{}", version);
         let triple = self.get_target_triple(&release)?;
         let zip = self.pick_electron_zip(&version, &release, &triple)?;
         let dirs = ProjectDirs::from("", "", "collider").ok_or(StartError::NoProjectDir)?;
         let dest = dirs.data_local_dir().join(&triple).to_owned();
         self.ensure_electron(&dirs, &dest, &zip, &triple).await?;
         let exe = dest.join(self.get_exe_name());
-        log::info!("Launching executable at {}", exe.display());
+        tracing::info!("Launching executable at {}", exe.display());
         println!(
             "Starting application. Debug information will be printed here. Press Ctrl+C to exit."
         );
@@ -184,10 +184,10 @@ impl StartCmd {
             fs::create_dir_all(parent).await?;
             let cache = dirs.cache_dir();
             fs::create_dir_all(cache).await?;
-            log::info!("Fetching zip file from {}", zip);
+            tracing::info!("Fetching zip file from {}", zip);
             let mut res = reqwest::get(zip.to_string()).compat().await?;
             let zip_dest = cache.join(format!("electron-{}.zip", triple));
-            log::info!("Writing zip file to {}", zip_dest.display());
+            tracing::info!("Writing zip file to {}", zip_dest.display());
             let mut file = fs::File::create(&zip_dest).await?;
             // TODO: For some reason, this keeps failing like half the time
             // due to a broken zip file? I don't it at all. I think the best
@@ -197,9 +197,9 @@ impl StartCmd {
                 file.write_all(&chunk[..]).await?;
             }
             std::mem::drop(file);
-            log::info!("Zip file written.");
+            tracing::info!("Zip file written.");
             let dest = dest.to_owned();
-            log::info!("Extracting zip file to {}", dest.display());
+            tracing::info!("Extracting zip file to {}", dest.display());
             let zip_dest_clone = zip_dest.clone();
             smol::unblock(move || -> Result<(), StartError> {
                 let mut archive = zip::ZipArchive::new(std::fs::File::open(&zip_dest)?)?;
@@ -207,7 +207,7 @@ impl StartCmd {
                 Ok(())
             })
             .await?;
-            log::info!("Deleting zip file. We don't need it anymore.");
+            tracing::info!("Deleting zip file. We don't need it anymore.");
             fs::remove_file(&zip_dest_clone).await?;
         }
         Ok(())

@@ -6,11 +6,11 @@ use collider_command::{
     async_trait::async_trait,
     clap::{self, ArgMatches, Clap, FromArgMatches, IntoApp},
     collider_config::{ColliderConfig, ColliderConfigLayer, ColliderConfigOptions},
-    log,
+    tracing,
 };
 use collider_common::{
     directories::ProjectDirs,
-    miette::{Context, IntoDiagnostic, Result},
+    miette::{Context, Result},
 };
 
 #[derive(Debug, Clap)]
@@ -30,11 +30,12 @@ pub struct Collider {
     config: Option<PathBuf>,
     #[clap(
         global = true,
-        about = "Log output level (off, error, warn, info, debug, trace)",
+        about = "Log verbosity level (off, error, warn, info, debug, trace)",
         long,
+        short,
         default_value = "warn"
     )]
-    loglevel: log::LevelFilter,
+    verbosity: tracing::Level,
     #[clap(global = true, about = "Disable all output", long, short = 'q')]
     quiet: bool,
     #[clap(global = true, long, about = "Format output as JSON.")]
@@ -44,36 +45,22 @@ pub struct Collider {
 }
 
 impl Collider {
-    fn setup_logging(&self) -> std::result::Result<(), fern::InitError> {
-        let fern = fern::Dispatch::new()
-            .format(|out, message, record| {
-                out.finish(format_args!(
-                    "collider [{}][{}] {}",
-                    record.level(),
-                    record.target(),
-                    message,
-                ))
-            })
-            .chain(
-                fern::Dispatch::new()
-                    .level(if self.quiet {
-                        log::LevelFilter::Off
-                    } else {
-                        self.loglevel
-                    })
-                    .chain(std::io::stderr()),
-            );
-        // TODO: later
-        // if let Some(logfile) = ProjectDirs::from("", "", "collider")
-        //     .map(|d| d.data_dir().to_owned().join(format!("collider-debug-{}.log", chrono::Local::now().to_rfc3339())))
-        // {
-        //     fern = fern.chain(
-        //         fern::Dispatch::new()
-        //         .level(log::LevelFilter::Trace)
-        //         .chain(fern::log_file(logfile)?)
-        //     )
-        // }
-        fern.apply()?;
+    fn setup_logging(&self) -> Result<()> {
+        let mut collector = tracing_subscriber::fmt()
+            .with_writer(std::io::stderr)
+            .without_time();
+        if self.quiet {
+            collector = collector.with_max_level(tracing_subscriber::filter::LevelFilter::OFF);
+        } else {
+            collector = collector.with_max_level(self.verbosity);
+        }
+        // TODO: Switch to try_init (ugh, `Box<dyn Error>` issues)
+        if self.json {
+            collector.json().init();
+        } else {
+            collector.init();
+        }
+
         Ok(())
     }
 
@@ -98,10 +85,9 @@ impl Collider {
         collider.layer_config(&matches, &cfg)?;
         collider
             .setup_logging()
-            .into_diagnostic()
-            .context("Failed to set up logging")?;
+            .context("Failed to setup logging")?;
         collider.execute().await?;
-        log::info!("Ran in {}s", start.elapsed().as_millis() as f32 / 1000.0);
+        tracing::info!("Ran in {}s", start.elapsed().as_millis() as f32 / 1000.0);
         Ok(())
     }
 }
@@ -141,7 +127,7 @@ pub enum ColliderCmd {
 #[async_trait]
 impl ColliderCommand for Collider {
     async fn execute(self) -> Result<()> {
-        log::info!("Running command: {:#?}", self.subcommand);
+        tracing::debug!("Running command: {:#?}", self.subcommand);
         use ColliderCmd::*;
         match self.subcommand {
             Bisect(cmd) => cmd.execute().await,
