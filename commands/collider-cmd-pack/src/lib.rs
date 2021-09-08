@@ -19,7 +19,7 @@ pub struct PackCmd {
 #[async_trait]
 impl ColliderCommand for PackCmd {
     async fn execute(self) -> Result<()> {
-        println!("Hello world!");
+        println!("Packaging app for release.");
         Ok(())
     }
 }
