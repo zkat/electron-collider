@@ -1,5 +1,5 @@
 use collider_common::{
-    miette::{self, Diagnostic},
+    miette::{self, Diagnostic, NamedSource, SourceOffset},
     thiserror::{self, Error},
 };
 
@@ -12,6 +12,25 @@ pub enum StartError {
     #[error(transparent)]
     #[diagnostic(code(collider::start::io_error))]
     IoError(#[from] std::io::Error),
+
+    #[error("Failed to get the currently-executing collider binary")]
+    #[diagnostic(
+        code(collider::start::current_exe_failure),
+        help("Acquiring the path of the current executable is a platform-specific operation that can fail for a good number of reasons. Some errors can include, but not be limited to, filesystem operations failing or general syscall failures.")
+    )]
+    CurrentExeFailure(#[source] std::io::Error),
+
+    #[error("Found some bad JSON")]
+    #[diagnostic(code(collider::start::bad_package_json))]
+    BadJson {
+        source: collider_common::serde_json::Error,
+        url: String,
+        json: NamedSource,
+        #[snippet(json, message("JSON context"))]
+        snip: (usize, usize),
+        #[highlight(snip, label = "here")]
+        err_loc: (usize, usize),
+    },
 
     #[error(transparent)]
     #[diagnostic(code(collider::start::zip_error))]
@@ -79,6 +98,25 @@ impl From<octocrab::Error> for StartError {
                 StartError::GitHubApiLimit(gh_err.clone())
             }
             _ => StartError::GitHubApiError(err),
+        }
+    }
+}
+
+impl StartError {
+    pub fn from_json_err(
+        err: collider_common::serde_json::Error,
+        path: String,
+        json: String,
+    ) -> Self {
+        // The offset of the error itself
+        let err_offset = SourceOffset::from_location(&json, err.line(), err.column());
+        let len = json.len();
+        Self::BadJson {
+            source: err,
+            url: path.clone(),
+            json: NamedSource::new(path, json),
+            snip: (0, len),
+            err_loc: (err_offset.offset(), 1),
         }
     }
 }

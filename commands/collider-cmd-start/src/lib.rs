@@ -92,6 +92,7 @@ impl StartCmd {
         // First, we check to see if we can get a concrete version based on
         // what we have. This is a fast path that completely avoids external
         // requests.
+        tracing::debug!("Looking up current collider version.");
         if let Some(version) = self.current_collider_version().await? {
             if !self.force && range.satisfies(&version) {
                 let triple = self.get_target_triple(&version)?;
@@ -105,26 +106,38 @@ impl StartCmd {
             }
         }
 
-        // If that doesn't work, we need to snoop around and download the thing we need.
+        tracing::debug!("Current collider version missing or not useable. Looking up matching Electron releases on GitHub");
         let (version, release) = self.get_electron_release(range).await?;
         let triple = self.get_target_triple(&version)?;
         let dest = dirs.data_local_dir().join(&triple).to_owned();
 
-        tracing::info!("Selected electron@{} ({})", version, triple);
+        if !self.quiet && !self.json {
+            println!("Selected electron@{} ({})", version, triple);
+        } else if self.json {
+            tracing::info!(
+                "Selected electron@{version} ({triple})",
+                version = version,
+                triple = triple
+            );
+        }
 
         let zip = self.pick_electron_zip(&version, &release, &triple)?;
         self.ensure_electron(&dirs, &dest, &zip, &triple).await
     }
 
     async fn current_collider_version(&self) -> Result<Option<Version>, StartError> {
-        for parent in std::env::current_exe()?
+        for parent in std::env::current_exe()
+            .map_err(StartError::CurrentExeFailure)?
             .parent()
             .expect("this should definitely have a parent")
             .ancestors()
         {
             let pkg_path = parent.join("package.json");
             if fs::metadata(&pkg_path).await.is_ok() {
-                let pkg: PackageJson = serde_json::from_str(&fs::read_to_string(&pkg_path).await?)?;
+                let pkg_src = fs::read_to_string(&pkg_path).await?;
+                let pkg: PackageJson = serde_json::from_str(&pkg_src).map_err(|e| {
+                    StartError::from_json_err(e, pkg_path.display().to_string(), pkg_src)
+                })?;
                 if pkg.name == "collider" {
                     return Ok(Some(pkg.version));
                 }
