@@ -61,6 +61,10 @@ pub enum StartError {
     #[diagnostic(transparent)]
     SemverError(#[from] node_semver::SemverError),
 
+    #[error("Failed to parse package.json")]
+    #[diagnostic(code(collider::start::parse_package_json))]
+    ParsePackageJson(#[from] collider_common::serde_json::Error),
+
     #[error("Electron process exited with an error")]
     #[diagnostic(code(collider::start::electron_error))]
     ElectronFailed,

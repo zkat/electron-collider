@@ -9,6 +9,8 @@ use collider_command::{
 use collider_common::{
     directories::ProjectDirs,
     miette::Result,
+    serde::Deserialize,
+    serde_json,
     smol::{self, fs, io::AsyncWriteExt, process::Command},
     surf::Url,
 };
@@ -66,15 +68,12 @@ pub struct StartCmd {
 #[async_trait]
 impl ColliderCommand for StartCmd {
     async fn execute(self) -> Result<()> {
-        let (version, release) = self
-            .get_electron_release(&self.using.parse().map_err(StartError::SemverError)?)
-            .await?;
-        tracing::info!("Selected electron@{}", version);
-        let triple = self.get_target_triple(&release)?;
-        let zip = self.pick_electron_zip(&version, &release, &triple)?;
-        let dirs = ProjectDirs::from("", "", "collider").ok_or(StartError::NoProjectDir)?;
-        let dest = dirs.data_local_dir().join(&triple).to_owned();
-        let exe = self.ensure_electron(&dirs, &dest, &zip, &triple).await?;
+        let range = self
+            .using
+            .parse::<Range>()
+            .map_err(StartError::SemverError)?;
+
+        let exe = self.get_electron_exe(&range).await?;
         tracing::debug!("Launching executable at {}", exe.display());
         if !self.quiet && !self.json {
             println!(
@@ -87,6 +86,76 @@ impl ColliderCommand for StartCmd {
 }
 
 impl StartCmd {
+    async fn get_electron_exe(&self, range: &Range) -> Result<PathBuf, StartError> {
+        let dirs = ProjectDirs::from("", "", "collider").ok_or(StartError::NoProjectDir)?;
+
+        // First, we check to see if we can get a concrete version based on
+        // what we have. This is a fast path that completely avoids external
+        // requests.
+        if let Some(version) = self.current_collider_version().await? {
+            if !self.force && range.satisfies(&version) {
+                let triple = self.get_target_triple(&version)?;
+                let exe = dirs
+                    .data_local_dir()
+                    .join(&triple)
+                    .join(self.get_exe_name());
+                if fs::metadata(&exe).await.is_ok() {
+                    return Ok(exe);
+                }
+            }
+        }
+
+        // If that doesn't work, we need to snoop around and download the thing we need.
+        let (version, release) = self.get_electron_release(range).await?;
+        let triple = self.get_target_triple(&version)?;
+        let dest = dirs.data_local_dir().join(&triple).to_owned();
+
+        tracing::info!("Selected electron@{} ({})", version, triple);
+
+        let zip = self.pick_electron_zip(&version, &release, &triple)?;
+        self.ensure_electron(&dirs, &dest, &zip, &triple).await
+    }
+
+    async fn current_collider_version(&self) -> Result<Option<Version>, StartError> {
+        for parent in std::env::current_exe()?
+            .parent()
+            .expect("this should definitely have a parent")
+            .ancestors()
+        {
+            let pkg_path = parent.join("package.json");
+            if fs::metadata(&pkg_path).await.is_ok() {
+                let pkg: PackageJson = serde_json::from_str(&fs::read_to_string(&pkg_path).await?)?;
+                if pkg.name == "collider" {
+                    return Ok(Some(pkg.version));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    async fn get_electron_release_from_tag(
+        &self,
+        crab: &octocrab::Octocrab,
+        version: &Version,
+        range: &Range,
+    ) -> Result<Option<octocrab::models::repos::Release>, StartError> {
+        if range.satisfies(version) && (!version.is_prerelease() || self.include_prerelease) {
+            match crab
+                .repos("electron", "electron")
+                .releases()
+                .get_by_tag(&format!("v{}", version))
+                .compat()
+                .await
+                .map_err(StartError::from)
+            {
+                Ok(release) => return Ok(Some(release)),
+                Err(err @ StartError::GitHubApiLimit(_)) => return Err(err),
+                Err(_) => {}
+            }
+        }
+        Ok(None)
+    }
+
     async fn get_electron_release(
         &self,
         range: &Range,
@@ -96,6 +165,17 @@ impl StartCmd {
             crab = crab.personal_token(token.clone());
         }
         let crab = crab.build()?;
+
+        if let Some(version) = self.current_collider_version().await? {
+            if let Some(release) = self
+                .get_electron_release_from_tag(&crab, &version, range)
+                .await?
+            {
+                return Ok((version, release));
+            }
+        }
+
+        // If we didn't find anything. It's time to query GitHub releases for the version we want.
         for page in 0u32.. {
             let tags = crab
                 .repos("electron", "electron")
@@ -111,31 +191,18 @@ impl StartCmd {
             }
             for tag in tags.into_iter() {
                 let version = tag.name[1..].parse::<Version>()?;
-                if range.satisfies(&version)
-                    && (!version.is_prerelease() || self.include_prerelease)
+                if let Some(release) = self
+                    .get_electron_release_from_tag(&crab, &version, range)
+                    .await?
                 {
-                    match crab
-                        .repos("electron", "electron")
-                        .releases()
-                        .get_by_tag(&tag.name)
-                        .compat()
-                        .await
-                        .map_err(StartError::from)
-                    {
-                        Ok(release) => return Ok((version, release)),
-                        Err(err @ StartError::GitHubApiLimit(_)) => return Err(err),
-                        Err(_) => {}
-                    }
+                    return Ok((version, release));
                 }
             }
         }
         Err(StartError::MatchingVersionNotFound(range.clone()))
     }
 
-    fn get_target_triple(
-        &self,
-        release: &octocrab::models::repos::Release,
-    ) -> Result<String, StartError> {
+    fn get_target_triple(&self, version: &Version) -> Result<String, StartError> {
         let platform = match std::env::consts::OS {
             "windows" => "win32",
             "macos" => "darwin",
@@ -149,7 +216,7 @@ impl StartCmd {
             "aarch64" => "arm64",
             _ => return Err(StartError::UnsupportedArch(std::env::consts::ARCH.into())),
         };
-        Ok(format!("{}-{}-{}", release.tag_name, platform, arch))
+        Ok(format!("v{}-{}-{}", version, platform, arch))
     }
 
     fn pick_electron_zip(
@@ -157,9 +224,9 @@ impl StartCmd {
         version: &Version,
         release: &octocrab::models::repos::Release,
         triple: &str,
-    ) -> Result<Url> {
+    ) -> Result<Url, StartError> {
         let name = format!("electron-{}.zip", triple);
-        Ok(release
+        release
             .assets
             .iter()
             .find(|a| a.name == name)
@@ -167,7 +234,7 @@ impl StartCmd {
             .ok_or_else(|| StartError::MissingElectronFiles {
                 version: version.clone(),
                 target: name,
-            })?)
+            })
     }
 
     async fn ensure_electron(
@@ -241,4 +308,10 @@ impl StartCmd {
             Err(StartError::ElectronFailed)
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct PackageJson {
+    name: String,
+    version: Version,
 }

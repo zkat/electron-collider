@@ -1,0 +1,5 @@
+{
+  "//": "This is a dummy package for interactive collider dev. In practice, this would be the JS wrapper's package.json",
+  "name": "collider",
+  "version": "13.0.0"
+}
