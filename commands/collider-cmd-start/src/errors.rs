@@ -116,7 +116,7 @@ impl StartError {
             url: path.clone(),
             json: NamedSource::new(path, json),
             snip: (0, len),
-            err_loc: (err_offset.offset(), 1),
+            err_loc: (err_offset.offset(), 0),
         }
     }
 }
