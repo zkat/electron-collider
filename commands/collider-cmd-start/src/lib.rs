@@ -280,6 +280,9 @@ impl StartCmd {
             let zip_dest_clone = zip_dest.clone();
             smol::unblock(move || -> Result<(), StartError> {
                 let mut archive = zip::ZipArchive::new(std::fs::File::open(&zip_dest)?)?;
+                // TODO: move this to its own method and do it manually, then
+                // manually handle symlinks:
+                // https://github.com/zip-rs/zip/pull/213
                 archive.extract(&dest)?;
                 Ok(())
             })
