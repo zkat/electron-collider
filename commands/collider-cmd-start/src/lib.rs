@@ -6,7 +6,11 @@ use collider_command::{
     collider_config::{self, ColliderConfigLayer},
     tracing, ColliderCommand,
 };
-use collider_common::{miette::Result, serde::Deserialize, smol::process::Command};
+use collider_common::{
+    miette::{Context, Result},
+    serde::Deserialize,
+    smol::process::Command,
+};
 use collider_electron::ElectronOpts;
 use node_semver::{Range, Version};
 
@@ -81,7 +85,12 @@ impl ColliderCommand for StartCmd {
                 "Starting application. Debug information will be printed here. Press Ctrl+C to exit."
             );
         }
-        self.exec_electron(electron.exe()).await?;
+        self.exec_electron(electron.exe()).await.with_context(|| {
+            format!(
+                "Failed to execute Electron binary at {}",
+                electron.exe().display()
+            )
+        })?;
         Ok(())
     }
 }
