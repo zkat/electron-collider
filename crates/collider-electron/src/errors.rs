@@ -11,9 +11,13 @@ pub enum ElectronError {
     #[diagnostic(code(collider::electron::http_error))]
     HttpError(#[from] reqwest::Error),
 
-    #[error(transparent)]
+    #[error("{0}")]
     #[diagnostic(code(collider::electron::io_error))]
-    IoError(#[from] std::io::Error),
+    IoError(String, #[source] std::io::Error),
+
+    #[error(transparent)]
+    #[diagnostic(code(collider::electron::copy_error))]
+    FsExtraError(#[from] fs_extra::error::Error),
 
     #[error("Failed to get the currently-executing collider binary")]
     #[diagnostic(
@@ -104,7 +108,11 @@ impl From<octocrab::Error> for ElectronError {
 }
 
 impl ElectronError {
-    pub fn from_json_err(err: collider_common::serde_json::Error, url: String, json: String) -> Self {
+    pub fn from_json_err(
+        err: collider_common::serde_json::Error,
+        url: String,
+        json: String,
+    ) -> Self {
         // These json strings can get VERY LONG and miette doesn't (yet?)
         // support any "windowing" mechanism for displaying stuff, so we have
         // to manually shorten the string to only the relevant bits and
@@ -122,4 +130,3 @@ impl ElectronError {
         }
     }
 }
-

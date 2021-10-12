@@ -44,6 +44,38 @@ impl Electron {
     pub fn arch(&self) -> &str {
         &self.arch
     }
+
+    pub async fn copy_files(&self, to: &Path) -> Result<Self, ElectronError> {
+        fs::create_dir_all(&to).await.map_err(|e| {
+            ElectronError::IoError(
+                "Failed to create directories to copy electron files into.".into(),
+                e,
+            )
+        })?;
+        let from_clone = self
+            .exe()
+            .parent()
+            .expect("BUG: This should have a parent")
+            .to_owned();
+        let to_clone = to.to_owned();
+        smol::unblock(move || {
+            let mut opts = fs_extra::dir::CopyOptions::new();
+            opts.overwrite = true;
+            opts.content_only = true;
+            fs_extra::dir::copy(from_clone, to_clone, &opts)
+        })
+        .await?;
+        Ok(Electron {
+            exe: to.join(
+                self.exe()
+                    .file_name()
+                    .expect("BUG: This definitely should have had a file name."),
+            ),
+            version: self.version.clone(),
+            os: self.os.clone(),
+            arch: self.arch.clone(),
+        })
+    }
 }
 
 pub struct ElectronOpts {
@@ -150,7 +182,9 @@ impl ElectronOpts {
         );
 
         let zip = self.pick_electron_zip(&version, &release, &triple)?;
-        let exe = self.ensure_electron_exe(&dirs, &dest, &zip, &triple).await?;
+        let exe = self
+            .ensure_electron_exe(&dirs, &dest, &zip, &triple)
+            .await?;
         Ok(Electron {
             exe,
             version,
@@ -168,7 +202,9 @@ impl ElectronOpts {
         {
             let pkg_path = parent.join("package.json");
             if fs::metadata(&pkg_path).await.is_ok() {
-                let pkg_src = fs::read_to_string(&pkg_path).await?;
+                let pkg_src = fs::read_to_string(&pkg_path).await.map_err(|e| {
+                    ElectronError::IoError(format!("Failed to read {}", pkg_path.display()), e)
+                })?;
                 let pkg: PackageJson = serde_json::from_str(&pkg_src).map_err(|e| {
                     ElectronError::from_json_err(e, pkg_path.display().to_string(), pkg_src)
                 })?;
@@ -287,36 +323,79 @@ impl ElectronOpts {
     ) -> Result<PathBuf, ElectronError> {
         if self.force.unwrap_or(false) || fs::metadata(&dest).await.is_err() {
             let parent = dest.parent().expect("BUG: cache dir should have a parent");
-            fs::create_dir_all(parent).await?;
+            fs::create_dir_all(parent).await.map_err(|e| {
+                ElectronError::IoError(
+                    format!(
+                        "Failed to create destination directory in cache, at {}",
+                        parent.display()
+                    ),
+                    e,
+                )
+            })?;
             let cache = dirs.cache_dir();
-            fs::create_dir_all(cache).await?;
+            fs::create_dir_all(cache).await.map_err(|e| {
+                ElectronError::IoError(
+                    format!("Failed to create cache directory, at {}", cache.display()),
+                    e,
+                )
+            })?;
+
             tracing::debug!("Fetching zip file from {}", zip);
             let mut res = reqwest::get(zip.to_string()).compat().await?;
             let zip_dest = cache.join(format!("electron-{}.zip", triple));
+
             tracing::debug!("Writing zip file to {}", zip_dest.display());
-            let mut file = fs::File::create(&zip_dest).await?;
+            let mut file = fs::File::create(&zip_dest).await.map_err(|e| {
+                ElectronError::IoError(
+                    format!("Failed to create file at {}.", zip_dest.display()),
+                    e,
+                )
+            })?;
             let mut written = 0;
             while let Some(chunk) = res.chunk().compat().await? {
-                file.write_all(chunk.as_ref()).await?;
+                file.write_all(chunk.as_ref()).await.map_err(|e| {
+                    ElectronError::IoError(format!("Failed to read data chunk from {}", zip), e)
+                })?;
                 written += chunk.len();
             }
-            file.flush().await?;
+            file.flush().await.map_err(|e| {
+                ElectronError::IoError(
+                    format!("Failed to flush out file handle for {}", zip_dest.display()),
+                    e,
+                )
+            })?;
             std::mem::drop(file);
-            tracing::debug!("Wrote {} bytes to zip file", written,);
+            tracing::debug!("Wrote {} bytes to zip file", written);
+
             let dest = dest.to_owned();
             tracing::debug!("Extracting zip file to {}", dest.display());
             let zip_dest_clone = zip_dest.clone();
             smol::unblock(move || -> Result<(), ElectronError> {
-                let mut archive = zip::ZipArchive::new(std::fs::File::open(&zip_dest)?)?;
+                let fd = std::fs::File::open(&zip_dest).map_err(|e| {
+                    ElectronError::IoError(
+                        format!("Failed to open file at {}.", zip_dest.display()),
+                        e,
+                    )
+                })?;
+                let mut archive = zip::ZipArchive::new(fd)?;
                 // TODO: move this to its own method and do it manually, then
-                // manually handle symlinks:
+                // manually handle symlinks to make it work on macOS:
                 // https://github.com/zip-rs/zip/pull/213
                 archive.extract(&dest)?;
                 Ok(())
             })
             .await?;
+
             tracing::debug!("Deleting zip file. We don't need it anymore.");
-            fs::remove_file(&zip_dest_clone).await?;
+            fs::remove_file(&zip_dest_clone).await.map_err(|e| {
+                ElectronError::IoError(
+                    format!(
+                        "Failed to remove temporary zip file at {}.",
+                        zip_dest_clone.display()
+                    ),
+                    e,
+                )
+            })?;
         }
         Ok(dest.join(self.get_exe_name()))
     }

@@ -7,7 +7,6 @@ edition = "2018"
 
 [dependencies]
 collider-common = { path = "../collider-common" }
-node-semver = "2.0.0"
 
 # Must be kept in sync with collider-common!!
 serde = "1.0.126"
@@ -17,4 +16,5 @@ octocrab = "0.12.0"
 async-compat = "0.2.1"
 zip = "0.5.13"
 reqwest = "0.11.4"
-
+fs_extra = "1.2.0"
+node-semver = "2.0.0"
