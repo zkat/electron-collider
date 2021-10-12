@@ -577,7 +577,7 @@ dependencies = [
  "chrono",
  "chrono-humanize",
  "directories",
- "miette",
+ "miette 3.2.0",
  "serde 1.0.130",
  "serde_json",
  "serde_with",
@@ -1567,9 +1567,20 @@ checksum = "0d862c70a58573f4b857bc7a2a5c9ebfd1f39530cbf2e8a355da5a67888f585e"
 dependencies = [
  "atty",
  "ci_info",
- "miette-derive",
+ "miette-derive 2.1.1",
  "once_cell",
  "owo-colors",
+ "thiserror",
+]
+
+[[package]]
+name = "miette"
+version = "3.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec47e61dc212c43f44dcd1f2841ccba79c6ec10da357cab7a7859b5f87bd27a9"
+dependencies = [
+ "miette-derive 3.2.0",
+ "once_cell",
  "thiserror",
 ]
 
@@ -1578,6 +1589,17 @@ name = "miette-derive"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ed1011bada9fd84d03031b4a97c18559f86abc13d748f271d01f9eac20d90fe"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "miette-derive"
+version = "3.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c0f0b6f999b9a9f7e86322125583a437cf015054b7aaa9926dff0ff13005b7e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1657,7 +1679,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b533f1b1f88d17422acc6b595279bc033aca5c81e53a26f4f1f60a237674ce12"
 dependencies = [
  "bytecount",
- "miette",
+ "miette 2.1.1",
  "nom 6.1.2",
  "serde 1.0.130",
  "thiserror",

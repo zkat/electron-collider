@@ -1,3 +1,5 @@
+use std::cmp;
+
 use collider_common::{
     miette::{self, Diagnostic, NamedSource, SourceOffset},
     thiserror::{self, Error},
@@ -25,10 +27,9 @@ pub enum StartError {
     BadJson {
         source: collider_common::serde_json::Error,
         url: String,
+        #[source_code]
         json: NamedSource,
-        #[snippet(json, message("JSON context"))]
-        snip: (usize, usize),
-        #[highlight(snip, label = "here")]
+        #[label("here")]
         err_loc: (usize, usize),
     },
 
@@ -77,7 +78,7 @@ pub enum StartError {
     NoProjectDir,
 
     #[error(transparent)]
-    #[diagnostic(transparent)]
+    #[diagnostic(code(collider::start::semver_error))]
     SemverError(#[from] node_semver::SemverError),
 
     #[error("Failed to parse package.json")]
@@ -103,20 +104,21 @@ impl From<octocrab::Error> for StartError {
 }
 
 impl StartError {
-    pub fn from_json_err(
-        err: collider_common::serde_json::Error,
-        path: String,
-        json: String,
-    ) -> Self {
-        // The offset of the error itself
+    pub fn from_json_err(err: collider_common::serde_json::Error, url: String, json: String) -> Self {
+        // These json strings can get VERY LONG and miette doesn't (yet?)
+        // support any "windowing" mechanism for displaying stuff, so we have
+        // to manually shorten the string to only the relevant bits and
+        // translate the spans accordingly.
         let err_offset = SourceOffset::from_location(&json, err.line(), err.column());
-        let len = json.len();
+        let json_len = json.len();
+        let local_offset = err_offset.offset().saturating_sub(40);
+        let local_len = cmp::min(40, json_len - err_offset.offset());
+        let snipped_json = json[local_offset..err_offset.offset() + local_len].to_string();
         Self::BadJson {
             source: err,
-            url: path.clone(),
-            json: NamedSource::new(path, json),
-            snip: (0, len),
-            err_loc: (err_offset.offset(), 0),
+            url: url.clone(),
+            json: NamedSource::new(url, snipped_json),
+            err_loc: (err_offset.offset() - local_offset, 0),
         }
     }
 }
