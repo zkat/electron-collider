@@ -77,7 +77,7 @@ impl ColliderCommand for StartCmd {
             opts = opts.github_token(token.to_owned());
         }
 
-        let electron = opts.build().await?;
+        let electron = opts.ensure_electron().await?;
 
         tracing::debug!("Launching executable at {}", electron.exe().display());
         if !self.quiet && !self.json {

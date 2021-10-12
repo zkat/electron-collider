@@ -89,7 +89,7 @@ impl ElectronOpts {
         self
     }
 
-    pub async fn build(self) -> Result<Electron, ElectronError> {
+    pub async fn ensure_electron(self) -> Result<Electron, ElectronError> {
         let dirs = ProjectDirs::from("", "", "collider").ok_or(ElectronError::NoProjectDir)?;
         let range = self.range.clone().unwrap_or_else(Range::any);
         let os = match std::env::consts::OS {
@@ -150,7 +150,7 @@ impl ElectronOpts {
         );
 
         let zip = self.pick_electron_zip(&version, &release, &triple)?;
-        let exe = self.ensure_electron(&dirs, &dest, &zip, &triple).await?;
+        let exe = self.ensure_electron_exe(&dirs, &dest, &zip, &triple).await?;
         Ok(Electron {
             exe,
             version,
@@ -278,7 +278,7 @@ impl ElectronOpts {
             })
     }
 
-    async fn ensure_electron(
+    async fn ensure_electron_exe(
         &self,
         dirs: &ProjectDirs,
         dest: &Path,
