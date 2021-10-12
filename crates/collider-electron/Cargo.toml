@@ -1,0 +1,20 @@
+[package]
+name = "collider-electron"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+collider-common = { path = "../collider-common" }
+node-semver = "2.0.0"
+
+# Must be kept in sync with collider-common!!
+serde = "1.0.126"
+
+octocrab = "0.12.0"
+# ...and we need this for smol compat.
+async-compat = "0.2.1"
+zip = "0.5.13"
+reqwest = "0.11.4"
+

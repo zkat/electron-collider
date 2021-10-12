@@ -8,3 +8,4 @@ pub use serde_with;
 pub use smol;
 pub use surf;
 pub use thiserror;
+pub use tracing;
