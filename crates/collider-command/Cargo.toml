@@ -11,5 +11,5 @@ collider-common = { path = "../collider-common" }
 async-trait = "0.1.19"
 clap = { git = "https://github.com/zkat/clap" }
 collider-config = { path = "../../crates/collider-config" }
-owo-colors = "2.0.0"
+owo-colors = "3.0.1"
 tracing = "0.1.26"
