@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use collider_command::{
     async_trait::async_trait,
@@ -24,7 +24,7 @@ pub struct StartCmd {
         about = "Path to Electron app. Must be an index.js file, a folder containing a package.json file, a folder containing an index.json file, and .html/.htm file, or an http/https/file URL.",
         default_value = "."
     )]
-    path: PathBuf,
+    path: String,
 
     #[clap(long, short, about = "Force download of the Electron binary.")]
     force: bool,
