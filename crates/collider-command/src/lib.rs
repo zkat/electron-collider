@@ -4,6 +4,7 @@ use collider_common::miette::Result;
 pub use async_trait;
 pub use clap;
 pub use collider_config;
+pub use dialoguer;
 pub use owo_colors;
 pub use tracing;
 
