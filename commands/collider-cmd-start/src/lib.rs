@@ -119,9 +119,3 @@ impl StartCmd {
         }
     }
 }
-
-#[derive(Debug, Deserialize)]
-struct PackageJson {
-    name: String,
-    version: Version,
-}

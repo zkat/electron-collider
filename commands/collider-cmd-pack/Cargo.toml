@@ -7,3 +7,4 @@ edition = "2018"
 [dependencies]
 collider-command = { path = "../../crates/collider-command" }
 collider-common = { path = "../../crates/collider-common" }
+collider-electron = { path = "../../crates/collider-electron" }

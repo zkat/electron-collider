@@ -12,11 +12,4 @@ collider-electron = { path = "../../crates/collider-electron" }
 # Must be kept in sync with collider-common!!
 serde = "1.0.126"
 
-# TODO: Just hand-write the requests eventually. This is _meant_ to be temporary, because it pulls in tokio.
-octocrab = "0.12.0"
-# ...and we need this for smol compat.
-async-compat = "0.2.1"
-zip = "0.5.13"
-reqwest = "0.11.4"
 node-semver = "2.0.0"
-
