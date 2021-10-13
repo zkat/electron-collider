@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use collider_command::{
     async_trait::async_trait,
@@ -57,24 +57,14 @@ impl ColliderCommand for PackCmd {
             .into_diagnostic()
             .context("Failed to create output directory")?;
 
-        let electron = self.ensure_electron().await?;
-        let electron_dir = electron
-            .exe()
-            .parent()
-            .expect("BUG: This should definitely have a parent directory.")
-            .to_owned();
-        let dirname = electron_dir
-            .file_name()
-            .expect("BUG: This should have a file name.");
-        let build_dir = out.join("electron-builds").join(dirname);
-        let copied_electron = electron.copy_files(&build_dir).await?;
-
+        let electron = self.ensure_electron(&out).await?;
+        println!("{:#?}", electron);
         Ok(())
     }
 }
 
 impl PackCmd {
-    async fn ensure_electron(&self) -> Result<Electron> {
+    async fn ensure_electron(&self, out: &Path) -> Result<Electron> {
         let mut opts = ElectronOpts::new()
             .force(self.force)
             .include_prerelease(self.include_prerelease);
@@ -83,6 +73,16 @@ impl PackCmd {
         }
 
         let electron = opts.ensure_electron().await?;
-        Ok(electron)
+        let electron_dir = electron
+            .exe()
+            .parent()
+            .expect("BUG: This should definitely have a parent directory.")
+            .to_owned();
+        let dirname = electron_dir
+            .file_name()
+            .expect("BUG: This should have a file name.");
+        let build_dir = out.join("electron-builds").join(dirname).join("release");
+        let copied_electron = electron.copy_files(&build_dir).await?;
+        Ok(copied_electron)
     }
 }
