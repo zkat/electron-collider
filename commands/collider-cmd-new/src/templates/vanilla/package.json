@@ -1,0 +1,19 @@
+{
+    "name": "@electron-collider/typescript-template",
+    "version": "0.0.0",
+    "description": "Base template for Electron Collider",
+    "repository": "https://github.com/zkat/electron-collider",
+    "author": "",
+    "license": "MIT",
+    "main": "dist/TypescriptTemplate.js",
+    "typings": "dist/TypescriptTemplate.d.ts",
+    "engines": {
+      "node": ">= 14.17.0"
+    },
+    "dependencies": {
+      "electron": "15.1.2,"
+    },
+    "devDependencies": {
+      "chai": "^4.3.3"
+    }
+  }
