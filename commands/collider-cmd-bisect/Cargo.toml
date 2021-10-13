@@ -7,3 +7,12 @@ edition = "2018"
 [dependencies]
 collider-command = { path = "../../crates/collider-command" }
 collider-common = { path = "../../crates/collider-common" }
+collider-electron = { path = "../../crates/collider-electron" }
+
+# Must be kept in sync with collider-common!!
+serde = "1.0.126"
+
+async-compat = "0.2.1"
+dialoguer = "0.8.0"
+node-semver = "2.0.0"
+reqwest = "0.11.4"
