@@ -13,3 +13,6 @@
 /tmp
 /.vscode
 /colliderrc.toml
+/collider-out
+/package-lock.json
+/node_modules
