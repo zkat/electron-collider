@@ -64,10 +64,10 @@ pub struct BisectCmd {
 #[async_trait]
 impl ColliderCommand for BisectCmd {
     async fn execute(self) -> Result<()> {
-        let start_version = self.start.parse::<Version>()?;
-        let end_version = self.end.parse::<Version>()?;
         let versions_response = reqwest::get("https://releases.electronjs.org/releases.json").compat().await.into_diagnostic()?;
         let all_versions: Vec<ElectronVersion> = versions_response.json().await.into_diagnostic()?;
+        let start_version = self.get_version(&self.start, &all_versions[all_versions.len() - 1].version.to_string())?;
+        let end_version = self.get_version(&self.end, &all_versions[0].version.to_string())?;
         let mut bisect_versions: Vec<ElectronVersion> = all_versions.into_iter()
             .filter(|version| !version.version.is_prerelease() && version.version >= start_version && version.version <= end_version)
             .collect();
@@ -133,3 +133,14 @@ impl ColliderCommand for BisectCmd {
         Ok(())
     }
 }
+
+impl BisectCmd {
+    fn get_version(&self, specified_version: &String, default_version: &String) -> Result<Version, BisectError> {
+        if specified_version == "*" {
+            return Ok(default_version.parse::<Version>()?);
+        } else {            
+            return Ok(specified_version.parse::<Version>()?);
+        }
+    }
+}
+
