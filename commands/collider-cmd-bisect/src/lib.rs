@@ -164,9 +164,9 @@ impl BisectCmd {
         default_version: &str,
     ) -> Result<Version, BisectError> {
         if specified_version == "*" {
-            Ok(default_version.parse::<Version>()?)
+            Ok(default_version.parse()?)
         } else {
-            Ok(specified_version.parse::<Version>()?)
+            Ok(specified_version.parse()?)
         }
     }
 }
