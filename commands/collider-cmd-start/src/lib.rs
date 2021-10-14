@@ -31,9 +31,6 @@ pub struct StartCmd {
     #[clap(long, short, about = "Electron version to use.", default_value = "*")]
     using: String,
 
-    #[clap(long, short, about = "GitHub API Token (no permissions needed)")]
-    github_token: Option<String>,
-
     #[clap(long, short, about = "Open a REPL to the main process.")]
     interactive: bool,
 
@@ -68,13 +65,10 @@ impl ColliderCommand for StartCmd {
             .parse::<Range>()
             .map_err(StartError::SemverError)?;
 
-        let mut opts = ElectronOpts::new()
+        let opts = ElectronOpts::new()
             .range(range)
             .force(self.force)
             .include_prerelease(self.include_prerelease);
-        if let Some(token) = &self.github_token {
-            opts = opts.github_token(token.to_owned());
-        }
 
         let electron = opts.ensure_electron().await?;
 

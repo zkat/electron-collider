@@ -11,7 +11,6 @@ use collider_common::{
 use node_semver::{Range, Version};
 
 use errors::ElectronError;
-use reqwest::Url;
 
 mod errors;
 
@@ -83,7 +82,6 @@ pub struct ElectronOpts {
     force: Option<bool>,
     range: Option<Range>,
     include_prerelease: Option<bool>,
-    github_token: Option<String>,
 }
 
 impl Default for ElectronOpts {
@@ -92,7 +90,6 @@ impl Default for ElectronOpts {
             force: None,
             range: None,
             include_prerelease: None,
-            github_token: None,
         }
     }
 }
@@ -114,11 +111,6 @@ impl ElectronOpts {
 
     pub fn include_prerelease(mut self, include_prerelease: bool) -> Self {
         self.include_prerelease = Some(include_prerelease);
-        self
-    }
-
-    pub fn github_token(mut self, github_token: String) -> Self {
-        self.github_token = Some(github_token);
         self
     }
 
@@ -171,8 +163,8 @@ impl ElectronOpts {
             }
         }
 
-        tracing::debug!("Current collider version missing or not useable. Looking up matching Electron releases on GitHub");
-        let (version, release) = self.get_electron_release(&range).await?;
+        tracing::debug!("Current collider version missing or not useable. Looking up matching Electron releases.");
+        let version = self.pick_electron_version(&range).await?;
         let triple = self.get_target_triple(&version, &os, &arch)?;
         let dest = dirs.data_local_dir().join(&triple).to_owned();
 
@@ -182,7 +174,7 @@ impl ElectronOpts {
             triple = triple
         );
 
-        let zip = self.pick_electron_zip(&version, &release, &triple)?;
+        let zip = self.pick_electron_zip(&version, &triple);
         let exe = self
             .ensure_electron_exe(&dirs, &dest, &zip, &triple)
             .await?;
@@ -217,75 +209,25 @@ impl ElectronOpts {
         Ok(None)
     }
 
-    async fn get_electron_release_from_tag(
-        &self,
-        crab: &octocrab::Octocrab,
-        version: &Version,
-        range: &Range,
-    ) -> Result<Option<octocrab::models::repos::Release>, ElectronError> {
-        if range.satisfies(version)
-            && (!version.is_prerelease() || self.include_prerelease.unwrap_or(false))
-        {
-            match crab
-                .repos("electron", "electron")
-                .releases()
-                .get_by_tag(&format!("v{}", version))
-                .compat()
-                .await
-                .map_err(ElectronError::from)
-            {
-                Ok(release) => return Ok(Some(release)),
-                Err(err @ ElectronError::GitHubApiLimit(_)) => return Err(err),
-                Err(_) => {}
-            }
-        }
-        Ok(None)
-    }
-
-    async fn get_electron_release(
-        &self,
-        range: &Range,
-    ) -> Result<(Version, octocrab::models::repos::Release), ElectronError> {
-        let mut crab = octocrab::OctocrabBuilder::new();
-        if let Some(token) = &self.github_token {
-            crab = crab.personal_token(token.clone());
-        }
-        let crab = crab.build()?;
-
+    async fn pick_electron_version(&self, range: &Range) -> Result<Version, ElectronError> {
         if let Some(version) = self.current_collider_version().await? {
-            if let Some(release) = self
-                .get_electron_release_from_tag(&crab, &version, range)
-                .await?
-            {
-                return Ok((version, release));
+            if range.satisfies(&version) {
+                return Ok(version);
             }
         }
 
-        // If we didn't find anything. It's time to query GitHub releases for the version we want.
-        for page in 0u32.. {
-            let tags = crab
-                .repos("electron", "electron")
-                .list_tags()
-                .per_page(100)
-                .page(page)
-                .send()
+        let releases: Vec<PackageJson> =
+            reqwest::get("https://releases.electronjs.org/releases.json")
                 .compat()
                 .await?
-                .items;
-            if tags.is_empty() {
-                break;
-            }
-            for tag in tags.into_iter() {
-                let version = tag.name[1..].parse::<Version>()?;
-                if let Some(release) = self
-                    .get_electron_release_from_tag(&crab, &version, range)
-                    .await?
-                {
-                    return Ok((version, release));
-                }
-            }
-        }
-        Err(ElectronError::MatchingVersionNotFound(range.clone()))
+                .json()
+                .compat()
+                .await?;
+        releases
+            .iter()
+            .find(|pkg| range.satisfies(&pkg.version))
+            .map(|pkg| pkg.version.clone())
+            .ok_or_else(|| ElectronError::MatchingVersionNotFound(range.clone()))
     }
 
     fn get_target_triple(
@@ -297,29 +239,18 @@ impl ElectronOpts {
         Ok(format!("v{}-{}-{}", version, os, arch))
     }
 
-    fn pick_electron_zip(
-        &self,
-        version: &Version,
-        release: &octocrab::models::repos::Release,
-        triple: &str,
-    ) -> Result<Url, ElectronError> {
-        let name = format!("electron-{}.zip", triple);
-        release
-            .assets
-            .iter()
-            .find(|a| a.name == name)
-            .map(|a| a.browser_download_url.clone())
-            .ok_or_else(|| ElectronError::MissingElectronFiles {
-                version: version.clone(),
-                target: name,
-            })
+    fn pick_electron_zip(&self, version: &Version, triple: &str) -> String {
+        format!(
+            "https://github.com/electron/electron/releases/download/v{}/electron-{}.zip",
+            version, triple
+        )
     }
 
     async fn ensure_electron_exe(
         &self,
         dirs: &ProjectDirs,
         dest: &Path,
-        zip: &Url,
+        zip: &str,
         triple: &str,
     ) -> Result<PathBuf, ElectronError> {
         if self.force.unwrap_or(false) || fs::metadata(&dest).await.is_err() {

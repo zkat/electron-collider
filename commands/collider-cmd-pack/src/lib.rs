@@ -145,12 +145,9 @@ impl PackCmd {
     }
 
     async fn ensure_electron(&self) -> Result<Electron> {
-        let mut opts = ElectronOpts::new()
+        let opts = ElectronOpts::new()
             .force(self.force)
             .include_prerelease(self.include_prerelease);
-        if let Some(token) = &self.github_token {
-            opts = opts.github_token(token.to_owned());
-        }
 
         let electron = opts.ensure_electron().await?;
         Ok(electron)
