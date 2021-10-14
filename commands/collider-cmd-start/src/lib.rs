@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use collider_command::{
     async_trait::async_trait,
@@ -8,11 +8,10 @@ use collider_command::{
 };
 use collider_common::{
     miette::{Context, Result},
-    serde::Deserialize,
     smol::process::Command,
 };
 use collider_electron::ElectronOpts;
-use node_semver::{Range, Version};
+use node_semver::Range;
 
 pub use errors::StartError;
 
@@ -24,7 +23,7 @@ pub struct StartCmd {
         about = "Path to Electron app. Must be an index.js file, a folder containing a package.json file, a folder containing an index.json file, and .html/.htm file, or an http/https/file URL.",
         default_value = "."
     )]
-    path: PathBuf,
+    path: String,
 
     #[clap(long, short, about = "Force download of the Electron binary.")]
     force: bool,

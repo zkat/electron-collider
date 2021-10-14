@@ -21,6 +21,7 @@ struct PackageJson {
     version: Version,
 }
 
+#[derive(Debug, Clone)]
 pub struct Electron {
     exe: PathBuf,
     version: Version,
