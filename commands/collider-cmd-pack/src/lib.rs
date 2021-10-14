@@ -8,9 +8,11 @@ use collider_command::{
 };
 use collider_common::{
     miette::{self, Context, IntoDiagnostic, Result},
-    smol::{fs, process::Command},
+    smol::{self, fs, process::Command},
 };
 use collider_electron::{Electron, ElectronOpts};
+use flate2::read::GzDecoder;
+use tar::Archive;
 
 #[derive(Debug, Clap, ColliderConfigLayer)]
 pub struct PackCmd {
@@ -124,35 +126,105 @@ impl PackCmd {
     }
 
     async fn stage_proj(&self, from: &Path, to: &Path) -> Result<()> {
+        tracing::info!("Staging current app before packaging");
         let npm_path = which::which("npm").into_diagnostic().context(
             "Failed to find npm command while packaging project. NPM/npx are required by collider.",
         )?;
+        tracing::debug!("npm path: {}", npm_path.display());
+
+        // First, we stage the current app into the staging folder by packing
+        // it and re-extracting it. This gets rid of unneeded crud.
+        tracing::debug!("Packing Electron project at {}", from.display());
         let mut cmd = if cfg!(target_os = "windows") {
             let mut cmd = Command::new("cmd");
             cmd.arg("/c");
-            cmd.arg(npm_path);
+            cmd.arg(&npm_path);
             cmd
         } else {
-            Command::new(npm_path)
+            Command::new(&npm_path)
         };
-
-        let status = cmd
+        let output = cmd
             .arg("pack")
-            // TODO: This is an npm@7 feature. It's not gonna fly. We need
-            // to pack in-situ and move, but it's good enough for a
-            // prototype.
-            .arg("--pack-destination")
-            .arg(to)
             .current_dir(from)
+            .output()
+            .await
+            .into_diagnostic()
+            .context("Spawning npm pack Command itself failed.")?;
+
+        if !output.status.success() {
+            miette::bail!("packing app for staging failed.")
+        }
+
+        // Now that we packed, we need to extract the tarball into the staging directory and remove the tarball.
+        let tarball_name = String::from_utf8(output.stdout)
+            .into_diagnostic()
+            .context("Failed to parse staging tarball filename as utf8. This is probably a bug in NPM itself.")?;
+        let tarball = from.join(&tarball_name.trim());
+        let to_clone = to.to_owned();
+        tracing::debug!(
+            "Extracting packed NPM project from {} to {}",
+            tarball.display(),
+            to.display()
+        );
+        smol::unblock(move || {
+            // TODO: error handling
+            let mut ar = Archive::new(GzDecoder::new(
+                std::fs::File::open(&tarball).expect("BUG: Where did the tarball go?"),
+            ));
+            ar.unpack(&to_clone)
+        })
+        .await
+        .into_diagnostic()
+        .context("Failed to extract staging tarball.")?;
+
+        let from_nm = from.join("node_modules");
+        let to_nm = to.join("node_modules");
+        tracing::debug!(
+            "Copying node_modules folder from {} to {}",
+            from_nm.display(),
+            to_nm.display()
+        );
+        fs::create_dir_all(&to_nm)
+            .await
+            .into_diagnostic()
+            .context("Failed to create destination directory for copied node_modules in staging")?;
+        smol::unblock(move || {
+            let mut opts = fs_extra::dir::CopyOptions::new();
+            opts.overwrite = true;
+            opts.content_only = true;
+            fs_extra::dir::copy(from_nm, to_nm, &opts)
+        })
+        .await
+        .into_diagnostic()
+        .context("Failed to copy over node_modules")?;
+
+        // Once we've moved node_modules, we do a prune and a rebuild.
+        tracing::debug!(
+            "Pruning node_modules directory at {}",
+            to.join("node_modules").display()
+        );
+        let mut cmd = if cfg!(target_os = "windows") {
+            let mut cmd = Command::new("cmd");
+            cmd.arg("/c");
+            cmd.arg(&npm_path);
+            cmd
+        } else {
+            Command::new(&npm_path)
+        };
+        let status = cmd
+            .arg("prune")
+            .arg("--omit")
+            .arg("dev")
+            .current_dir(to)
             .status()
             .await
             .into_diagnostic()
-            .context("Executing npm Command itself failed.")?;
+            .context("Spawning npm Command itself failed.")?;
 
-        if status.success() {
-            Ok(())
-        } else {
-            miette::bail!("Project staging failed.")
+        if !status.success() {
+            miette::bail!("pruning staging folder failed.")
         }
+
+        Ok(())
     }
 }
