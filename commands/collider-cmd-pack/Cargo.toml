@@ -8,3 +8,5 @@ edition = "2018"
 collider-command = { path = "../../crates/collider-command" }
 collider-common = { path = "../../crates/collider-common" }
 collider-electron = { path = "../../crates/collider-electron" }
+
+which = "4.2.2"

@@ -8,11 +8,10 @@ use collider_command::{
 };
 use collider_common::{
     miette::{Context, Result},
-    serde::Deserialize,
     smol::process::Command,
 };
 use collider_electron::ElectronOpts;
-use node_semver::{Range, Version};
+use node_semver::Range;
 
 pub use errors::StartError;
 
