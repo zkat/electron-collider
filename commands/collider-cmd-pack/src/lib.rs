@@ -61,26 +61,30 @@ impl ColliderCommand for PackCmd {
         let out = self.output.clone();
         // Make sure we've downloaded & cached an electron version
         let electron = self.ensure_electron().await?;
-        let asar = self.ensure_asar(self.asar.as_deref()).await?;
+        let asar = self.ensure_asar(&electron).await?;
         fs::create_dir_all(&out)
             .await
             .into_diagnostic()
             .context("Failed to create output directory")?;
-
-        println!("{:#?}", electron);
+        let rel_electron = self.prepare_release(&electron, &asar, &out).await?;
+        println!("{:#?}", rel_electron);
         Ok(())
     }
 }
 
 impl PackCmd {
-    async fn ensure_asar(&self, asar: Option<&Path>) -> Result<PathBuf> {
-        if let Some(asar) = asar {
-            return Ok(asar);
+    async fn ensure_asar(&self, electron: &Electron) -> Result<PathBuf> {
+        if let Some(asar) = &self.asar {
+            return Ok(asar.clone());
         }
-
+        self.prune_proj(&self.path).await?;
+        self.rebuild_proj(&self.path, electron).await?;
+        let asar_dest = self.path.join("node_modules").join("app.asar");
+        self.pack_asar(&self.path, &asar_dest).await?;
+        Ok(asar_dest)
     }
 
-    async fn ensure_electron(&self, out: &Path) -> Result<Electron> {
+    async fn ensure_electron(&self) -> Result<Electron> {
         let mut opts = ElectronOpts::new()
             .force(self.force)
             .include_prerelease(self.include_prerelease);
@@ -89,6 +93,15 @@ impl PackCmd {
         }
 
         let electron = opts.ensure_electron().await?;
+        Ok(electron)
+    }
+
+    async fn prepare_release(
+        &self,
+        electron: &Electron,
+        asar: &Path,
+        out: &Path,
+    ) -> Result<Electron> {
         let electron_dir = electron
             .exe()
             .parent()
@@ -101,15 +114,8 @@ impl PackCmd {
         let copied_electron = electron.copy_files(&build_dir.join("release")).await?;
         self.remove_default_app_asar(&copied_electron).await?;
         let asar_dest = build_dir.join("release").join("resources").join("app.asar");
-        if let Some(asar) = &self.asar {
-            // TODO: Copy over .asar
-            let opts = fs_extra::file::CopyOptions::new();
-            fs_extra::file::copy(asar, &asar_dest, &opts).into_diagnostic()?;
-        } else {
-            self.prune_proj(&self.path).await?;
-            self.rebuild_proj(&self.path, &copied_electron).await?;
-            self.pack_asar(&self.path, &asar_dest).await?;
-        }
+        let opts = fs_extra::file::CopyOptions::new();
+        fs_extra::file::copy(asar, &asar_dest, &opts).into_diagnostic()?;
         Ok(copied_electron)
     }
 
