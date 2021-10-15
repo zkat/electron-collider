@@ -1,31 +1,24 @@
 use std::path::{Path, PathBuf};
+use walkdir::WalkDir;
 
 use collider_command::{
     async_trait::async_trait,
     clap::{self, Clap},
     collider_config::{self, ColliderConfigLayer},
     dialoguer::{Input, theme::ColorfulTheme},
+    owo_colors::{OwoColorize},
     tracing, ColliderCommand,
 };
 
 use collider_common::{
     miette::{self, Context, IntoDiagnostic, Result},
-    smol::{fs, prelude::*, process::Command},
+    smol::{fs, process::Command},
 };
-
-// use collider_electron::ElectronOpts;
 
 #[derive(Debug, Clap, ColliderConfigLayer)]
 pub struct NewCmd {
     #[clap(about = "Path to create new Electron application in.")]
     path: PathBuf,
-    #[clap(
-        long,
-        short = 't',
-        default_value = "vanilla",
-        about = "Template to use when scaffolding a new application."
-    )]
-    template: String,
     #[clap(from_global)]
     verbosity: tracing::Level,
     #[clap(from_global)]
@@ -37,8 +30,9 @@ pub struct NewCmd {
 #[async_trait]
 impl ColliderCommand for NewCmd {
     async fn execute(self) -> Result<()> {
+        println!("Setting up your project...");
         let name : String = Input::with_theme(&ColorfulTheme::default())
-            .with_prompt("What's your project name?: ")
+            .with_prompt("Project Name?: ")
             .with_initial_text("")
             .default("new-collider-project".into())
             .interact_text().into_diagnostic()?;
@@ -46,19 +40,17 @@ impl ColliderCommand for NewCmd {
 
         self.create_new_dir(&proj_path).await?;
         println!(
-            "Created a new Electron project - {} - at {}",
-            name,
-            proj_path.display(),
+            "✔ Created Project Directory for {} at {}",
+            name.green(),
+            proj_path.display().green(),
         );
 
-        let initialize : String = Input::with_theme(&ColorfulTheme::default())
-            .with_prompt("Would you like to npm install and build your project now? (yes/no)")
-            .with_initial_text("")
-            .interact_text().into_diagnostic()?;
-        if initialize == "yes" {
-            self.init(&proj_path).await?;
-        }
-        println!("{} is ready for development ✨", &name);
+        self.init_git(&proj_path).await?;
+        self.init_npm(&proj_path).await?;
+
+        println!("✨ {} is Ready for Development ✨", &name.green());
+        println!("Run \"npm run start\" to see it in action.");
+
         Ok(())
     }
 }
@@ -66,33 +58,37 @@ impl ColliderCommand for NewCmd {
 impl NewCmd {
     async fn create_new_dir(&self, dir: &PathBuf) -> Result<()> {
         fs::create_dir(&dir).await.into_diagnostic()?;
-
-        // TODO: use walkdir here and preload some of the files with author
-        // project names and license data, etc
         let template_path = Path::new("./commands/collider-cmd-new/templates/quick-start");
-        let mut entries = fs::read_dir(template_path).await.into_diagnostic()?;
-        while let Some(res) = entries.next().await {
-            let entry = res.into_diagnostic()?;
-            let path = entry.path();
-            match path.file_name() {
-                Some(filename) => {
-                    let dest_path = &dir.join(filename);
-                    fs::copy(&path, &dest_path).await.into_diagnostic()?;
-                }
-                None => {
-                    println!("failed: {:?}", path);
+        for entry in WalkDir::new(template_path)
+            .min_depth(1)
+            .max_depth(1)
+            .into_iter()
+        .filter_map(|e| e.ok()) {
+            if entry.metadata().unwrap().is_dir() {
+                let options = fs_extra::dir::CopyOptions::new();
+                fs_extra::dir::copy(entry.path(), &dir, &options);
+            } else if entry.metadata().unwrap().is_file() {
+                let path = entry.path();
+                match path.file_name() {
+                    Some(filename) => {
+                        let dest_path = &dir.join(filename);
+                        fs::copy(&path, &dest_path).await.into_diagnostic()?;
+                    }
+                    None => {
+                        miette::bail!("Project directory creation failed.");
+                    }
                 }
             }
         }
         Ok(())
     }
 
-    async fn init(&self, proj_dir: &PathBuf) -> Result<()> {
-        // dev: npm i and npm run start in the new project directory
+    async fn init_npm(&self, proj_dir: &PathBuf) -> Result<()> {
         let npm_path = which::which("npm").into_diagnostic().context(
-            "Failed to find npm command while packaging project. NPM/npx are required by collider.",
+            "Failed to find npm command while creating project. NPM/npx are required by Collider.",
         )?;
-
+        
+        println!("✔ Installing NPM Dependencies");
         let mut cmd = if cfg!(target_os = "windows") {
             let mut cmd = Command::new("cmd");
             cmd.arg("/c");
@@ -102,31 +98,48 @@ impl NewCmd {
             Command::new(npm_path)
         };
 
-        let install_status = cmd
+        let status = cmd
             .arg("install")
+            .arg("--silent")
             .current_dir(proj_dir)
             .status()
             .await
             .into_diagnostic()
             .context("Failed to spawn NPM itself.")?;
 
-        let start_status = cmd
-            .arg("run")
-            .arg("start")
+        if !status.success() {
+            miette::bail!("Could not initialize project");
+        }
+        Ok(())
+    }
+
+    async fn init_git(&self, proj_dir: &PathBuf) -> Result<()> {
+        println!("✔ Initializing Git");
+        let git_path = which::which("git").into_diagnostic().context(
+            "Failed to find git while creating project. Git is required by Collider."
+        )?;
+
+        let mut cmd = if cfg!(target_os = "windows") {
+            let mut cmd = Command::new("cmd");
+            cmd.arg("/c");
+            cmd.arg(git_path);
+            cmd
+        } else {
+            Command::new(git_path)
+        };
+
+        let status = cmd
+            .arg("init")
+            .arg("--quiet")
             .current_dir(proj_dir)
             .status()
             .await
             .into_diagnostic()
-            .context("Failed to start project with npm run start.")?;
+            .context("Failed to initialize git itself.")?;
 
-        if !install_status.success() || !start_status.success() {
-            miette::bail!("Initializing project failed")
+        if !status.success() {
+            miette::bail!("Could not initialize git.");
         }
-        // run the electron binary instead?
-        // let opts = ElectronOpts::new();
-        // let electron = opts.ensure_electron().await?;
-        // let mut cmd = Command::new(electron.exe());
-
         Ok(())
     }
 }

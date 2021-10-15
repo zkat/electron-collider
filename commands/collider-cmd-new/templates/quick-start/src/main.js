@@ -8,17 +8,14 @@ function createWindow () {
     width: 800,
     height: 600,
     webPreferences: {
-      allowRunningInsecureContent: false,
-      contextIsolation: true,
-      enableRemoteModule: false,
-      nodeIntegration: false,
       sandbox: true,
-      preload: path.join(app.getAppPath(), 'preload.js'),
-    }
+      preload: path.join(app.getAppPath(), 'src/preload.js'),
+    },
+    icon: path.join(__dirname, 'assets/icons/electron-icon.png')
   })
 
   // and load the index.html of the app.
-  mainWindow.loadFile('index.html')
+  mainWindow.loadFile('src/index.html')
 
   // Open the DevTools.
   // mainWindow.webContents.openDevTools()

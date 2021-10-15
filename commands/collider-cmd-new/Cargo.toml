@@ -9,4 +9,6 @@ collider-command = { path = "../../crates/collider-command" }
 collider-common = { path = "../../crates/collider-common" }
 collider-electron = { path = "../../crates/collider-electron" }
 
+fs_extra = "1.2.0"
 which = "4.2.2"
+walkdir = "2.3.2"
