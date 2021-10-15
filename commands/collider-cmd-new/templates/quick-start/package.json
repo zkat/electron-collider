@@ -5,8 +5,8 @@
     "description": "Base template for Electron Collider",
     "repository": "https://github.com/zkat/electron-collider",
     "license": "MIT",
-    "main": "dist/main.js",
-    "typings": "dist/main.d.ts",
+    "main": "main.js",
+    "typings": "main.d.ts",
     "scripts": {
       "start": "electron ."
     },
@@ -15,10 +15,7 @@
     },
     "devDependencies": {
       "@types/node": "^16.9.6",
-      "electron": "^15.1.2,",
-      "electron-esbuild": "3.x",
-      "electron-util": "^0.17.2",
-      "esbuild": "^0.x",
-      "typescript": "^4.4.3"
+      "electron": "^15.1.2",
+      "esbuild": "^0.x"
     }
   }

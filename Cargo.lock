@@ -525,6 +525,8 @@ version = "0.1.0"
 dependencies = [
  "collider-command",
  "collider-common",
+ "collider-electron",
+ "which",
 ]
 
 [[package]]
